@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite
+*.sqlite*
+*.db
+data/
+.env
+.env.*
+.git/
+.gitignore
+.bot.lock

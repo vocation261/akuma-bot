@@ -1,0 +1,10 @@
+.env
+.env.*
+config.json
+data/
+*.db
+*.sqlite*
+.bot.lock
+__pycache__/
+*.pyc
+.venv/
