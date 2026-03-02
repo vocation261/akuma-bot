@@ -5,16 +5,5 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      DISCORD_TOKEN: ${DISCORD_TOKEN}
-      SYNC_GUILD_ID: ${SYNC_GUILD_ID:-}
-      YTDLP_ARGS: ${YTDLP_ARGS:-}
-      STREAM_URL_CACHE_TTL: ${STREAM_URL_CACHE_TTL:-300}
-      QUEUE_PLAYLIST_MAX_ITEMS: ${QUEUE_PLAYLIST_MAX_ITEMS:-100}
-      PLAYER_MAX_RETRIES: ${PLAYER_MAX_RETRIES:-2}
-      VC_CHANNEL_STATUS_ENABLED: ${VC_CHANNEL_STATUS_ENABLED:-true}
-      VC_CHANNEL_STATUS_PREFIX: "${VC_CHANNEL_STATUS_PREFIX:-🎙️ Space: }"
-      HISTORY_DB_PATH: ${HISTORY_DB_PATH:-data/history.db}
-      IDLE_DISCONNECT_SECONDS: ${IDLE_DISCONNECT_SECONDS:-60}
     volumes:
       - ./data:/app/data
