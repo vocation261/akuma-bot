@@ -15,8 +15,9 @@ class HelpersTestCase(unittest.TestCase):
         self.assertTrue(resolver.is_space_url('https://x.com/i/spaces/abc123'))
         self.assertFalse(resolver.is_space_url('notaurl'))
 
-        ok, _ = validate_playable_url('https://youtube.com/watch?v=123')
-        self.assertTrue(ok)
+        ok, msg = validate_playable_url('https://youtube.com/watch?v=123')
+        self.assertFalse(ok)
+        self.assertIn('only x space urls', msg.lower())
 
         ok, msg = validate_playable_url('https://discord.com/channels/1/2/3')
         self.assertFalse(ok)

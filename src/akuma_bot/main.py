@@ -12,6 +12,7 @@ from pathlib import Path
 import discord
 from discord import app_commands
 
+from akuma_bot.infrastructure.alerts.monitor import SpaceAlertMonitor
 from akuma_bot.infrastructure.discord.command_handlers import register_commands, register_tree_error_handler
 from akuma_bot.infrastructure.discord.panel_gateway import DiscordPanelGateway
 from akuma_bot.infrastructure.discord.voice_gateway import DiscordVoiceGateway
@@ -35,6 +36,7 @@ class AppDeps:
     media_resolver: YtDlpResolver
     voice_gateway: DiscordVoiceGateway
     panel_gateway: DiscordPanelGateway
+    alert_monitor: SpaceAlertMonitor
     start_ts: float
 
 
@@ -83,6 +85,7 @@ def build_app() -> AppDeps:
     media_resolver = YtDlpResolver()
     voice_gateway = DiscordVoiceGateway(config=config, sessions=sessions, media_resolver=media_resolver)
     panel_gateway = DiscordPanelGateway(sessions=sessions, voice_gateway=voice_gateway)
+    alert_monitor = SpaceAlertMonitor(client=client)
     deps = AppDeps(
         client=client,
         tree=tree,
@@ -92,6 +95,7 @@ def build_app() -> AppDeps:
         media_resolver=media_resolver,
         voice_gateway=voice_gateway,
         panel_gateway=panel_gateway,
+        alert_monitor=alert_monitor,
         start_ts=time.time(),
     )
     register_commands(tree, deps)
@@ -140,6 +144,7 @@ async def run_bot(deps: AppDeps):
         else:
             await deps.tree.sync()
         asyncio.create_task(deps.panel_gateway.autorefresh_loop(deps.client))
+        deps.alert_monitor.start()
         if idle_task is None or idle_task.done():
             idle_task = asyncio.create_task(idle_disconnect_loop(deps, deps.config.idle_disconnect_seconds))
         logger.info("Bot ready: %s (ID: %s)", deps.client.user, deps.client.user.id if deps.client.user else "-")

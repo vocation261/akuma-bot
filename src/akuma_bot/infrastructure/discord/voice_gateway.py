@@ -21,6 +21,8 @@ class DiscordVoiceGateway:
         self.media_resolver = media_resolver
 
     async def play(self, guild, user, url: str, mode: str = "recorded", force_vc_channel_id: int = 0) -> dict:
+        if not self.media_resolver.is_space_url(url):
+            return {"ok": False, "status": "error", "message": "Only X Space URLs are supported."}
         session = self.sessions.guild(guild.id)
         lock = self.sessions.play_lock(guild.id)
         if lock.locked():
@@ -38,18 +40,6 @@ class DiscordVoiceGateway:
         async with lock:
             if session.channel_status_overridden and session.last_vc_channel_id and session.last_vc_channel_id != int(getattr(target_channel, "id", 0)):
                 await self._restore_channel_status(session, guild)
-
-            playlist_extra: list[str] = []
-            if self.media_resolver.is_playlist_url(url):
-                items = await asyncio.to_thread(
-                    self.media_resolver.expand_playlist_urls,
-                    url,
-                    self.config.ytdlp_args,
-                    max(1, int(self.config.queue_playlist_max_items or 100)),
-                )
-                if items:
-                    playlist_extra = items[1:]
-                    url = items[0]
 
             stream_url = self.sessions.get_cached_stream(url, self.config.stream_url_cache_ttl)
             if not stream_url:
@@ -71,14 +61,11 @@ class DiscordVoiceGateway:
 
             if (voice_client.is_playing() or voice_client.is_paused()) and not session.restarting_track:
                 session.queue.append(QueueItem(url=url, mode=mode))
-                for extra in playlist_extra:
-                    session.queue.append(QueueItem(url=extra, mode="recorded"))
                 return {
                     "ok": True,
                     "status": "queued",
                     "message": f"Added to queue. Pending: {len(session.queue)}",
                     "embed": None,
-                    "playlist_added": len(playlist_extra),
                 }
 
             if voice_client.is_playing() or voice_client.is_paused():
@@ -125,7 +112,6 @@ class DiscordVoiceGateway:
             session.max_play_retries = max(0, int(self.config.player_max_retries or 0))
             session.active_ytdlp_args = str(self.config.ytdlp_args or "")
             session.active_stream_cache_ttl = int(self.config.stream_url_cache_ttl or 300)
-            session.active_queue_max_items = int(self.config.queue_playlist_max_items or 100)
             session.channel_status_enabled = bool(self.config.vc_channel_status_enabled)
             session.channel_status_prefix = str(self.config.vc_channel_status_prefix or "🎙️ Space: ")
             session.restarting_track = False
@@ -139,7 +125,6 @@ class DiscordVoiceGateway:
                 "status": "started",
                 "message": "Playback started.",
                 "embed": self._build_play_embed(url, mode, target_channel, user),
-                "playlist_added": len(playlist_extra),
             }
 
     async def pause_toggle(self, guild) -> tuple[bool, str]:

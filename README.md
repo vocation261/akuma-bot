@@ -1,28 +1,98 @@
-# Akuma Bot
+# BotkumaX
 
-Discord voice bot for X Spaces, YouTube streams and recordings, with queue controls, panel controls, retries, autorefresh, SQLite history and URL cache TTL.
+Bot de Discord para:
+- reproducir X Spaces en canal de voz;
+- consultar por scraping los participantes del Space actual (host, co-hosts, speakers y listeners);
+- controlar reproducción por slash commands;
+- guardar historial en SQLite;
+- monitorear cuentas de X y enviar alertas automáticas cuando detecta Spaces en vivo.
 
-## Commands
+## Resumen rápido del proyecto
 
-`/live /rec /dash /dc /mute /pause /resume /forward /rewind /seek /seekback /seekto /history /diag /skip /cq /now /queue /bookmarks /historycsv /health`
+BotkumaX unifica dos flujos en un solo proceso:
+1. **Player de voz**: entra al voice channel y reproduce live/recorded.
+2. **Monitor de alertas**: vigila cuentas de X y publica embeds de alerta en canales de Discord.
 
-## Environment Variables
+Esto evita tener dos bots/procesos separados para audio y alertas.
 
-Required:
+## Nota de versión
+
+### v0.2.0 (Marzo 2026)
+
+- Nuevo comando `/participants`:
+  - consulta participantes del Space actual por scraping;
+  - muestra host, co-hosts, speakers y listeners;
+  - ahora los `@usuarios` salen con link directo a su perfil en X.
+- Mejoras en bookmarks:
+  - `/mark` ahora acepta título opcional (`title`);
+  - calcula `Position` como diferencia real entre inicio UTC del Space y momento del bookmark;
+  - muestra `Space started (UTC)` y `Bookmarked (UTC)`.
+- `/bookmarks` extendido con acciones:
+  - `action:list` para listar;
+  - `action:delete bookmark_id:<id>` para borrar uno;
+  - `action:clear` para limpiar todos.
+- Simplificación de controles:
+  - se eliminaron comandos `/pause`, `/seek`, `/seekback`, `/seekto`;
+  - se quitaron botones del panel: `Pause`, `-1m`, `-5m`, `+5m`, `+30m`, `+1h`, `Seek`, `Clear chat`.
+- Enfoque solo X Spaces:
+  - se retiró soporte de reproducción YouTube.
+- Configuración del scraper movida a entorno:
+  - query IDs, bearer, endpoints y timeouts ahora se controlan vía `.env`.
+
+## Comandos slash
+
+### Player y utilidades
+
+- `/live <url>`: reproduce un Space en vivo en tu canal de voz.
+- `/rec <url>`: reproduce un Space grabado.
+- `/participants`: hace scraping del Space actual y muestra host, co-hosts, speakers y listeners.
+- `/dash`: crea/actualiza el panel interactivo del bot.
+- `/dc`: desconecta el bot del canal de voz.
+- `/mute`: silencia o activa audio del bot.
+- `/resume`: reanuda si está en pausa.
+- `/forward <minutos>`: adelanta 1, 5, 10, 30 o 60 minutos.
+- `/rewind <minutos>`: retrocede 1, 5 o 30 minutos.
+- `/skip`: salta al siguiente item de la cola.
+- `/cq`: limpia la cola de reproducción.
+- `/now`: muestra lo que se está reproduciendo.
+- `/queue`: lista la cola actual.
+- `/mark`: guarda un bookmark de la posición actual.
+- `/bookmarks`: lista bookmarks (`action:list`), elimina uno por `bookmark_id` (`action:delete`) o limpia todos (`action:clear`).
+- `/history`: muestra historial reciente de reproducción.
+- `/historycsv`: exporta historial a CSV.
+- `/diag`: diagnóstico rápido del estado del bot.
+- `/health`: snapshot operativo (latencia, uptime, voz, cola, etc.).
+- `/alert_add <@handle|id>`: agrega una cuenta X a monitoreo.
+- `/alert_remove <indice|id|@handle>`: elimina una cuenta monitoreada.
+- `/alert_list`: lista cuentas monitoreadas.
+- `/alert_map <id> <handle>`: asocia ID de X con @handle.
+- `/alert_interval <segundos>`: cambia intervalo de escaneo.
+- `/alert_status`: muestra estado del monitor de alertas.
+- `/alert_check`: fuerza un escaneo inmediato.
+
+## Configuración de entorno
+
+Mínimo requerido:
 - `DISCORD_TOKEN`
 
-Optional:
-- `SYNC_GUILD_ID`
-- `YTDLP_ARGS` default `""`
-- `STREAM_URL_CACHE_TTL` default `300`
-- `QUEUE_PLAYLIST_MAX_ITEMS` default `100`
-- `PLAYER_MAX_RETRIES` default `2`
-- `VC_CHANNEL_STATUS_ENABLED` default `true`
-- `VC_CHANNEL_STATUS_PREFIX` default `🎙️ Space: `
-- `HISTORY_DB_PATH` default `data/history.db`
-- `IDLE_DISCONNECT_SECONDS` default `60`
+Variables principales (opcional):
+- `SYNC_GUILD_ID` sincroniza slash commands instantáneamente en un servidor específico.
+- `HISTORY_DB_PATH` por defecto `data/history.db`.
+- `IDLE_DISCONNECT_SECONDS` por defecto `60`.
+- `DISCORD_ALERT_CHANNEL_IDS` lista de canales para alertas (separados por coma).
+- `DISCORD_ALERT_CHANNEL_ID` fallback de un solo canal.
+- `DISCORD_ADMIN_CHANNEL_ID` canal para avisos de error/parcial de entrega.
+- `DISCORD_ALERT_MENTION_EVERYONE` por defecto `true`.
+- `ALERT_CONFIG_PATH` por defecto `config.json`.
+- `ALERTED_SPACES_PATH` por defecto `alertados.json`.
+- `X_AUTH_TOKEN`, `X_CT0`, `X_TWID` cookies de X/Twitter para scraping autenticado.
+- Variables avanzadas del scraper (`X_PUBLIC_BEARER`, `X_WEB_BASE_URL`, `X_API_BASE_URL`, `X_GQL_*`, `X_HTTP_TIMEOUT_*`) para ajustar endpoints/query IDs sin cambiar código.
 
-## Local Run
+Referencia completa en:
+- [`.env.example`](./.env.example)
+- [`.env.dev`](./.env.dev)
+
+## Ejecución local (sin Docker)
 
 ```bash
 python -m venv .venv
@@ -30,52 +100,32 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 cp .env.example .env
-```
-
-Set `DISCORD_TOKEN` in `.env` and run:
-
-```bash
 python -m akuma_bot.main
 ```
 
-## OCI Deployment
+## Desarrollo con Docker (aislado de prod)
 
-1. Create an Ubuntu VM in OCI.
-2. Install Docker Engine using official docs: https://docs.docker.com/engine/install/ubuntu/
-3. Login to GHCR from the VM:
+Este proyecto incluye setup de desarrollo separado para no mezclar estado con producción:
+- `docker-compose.dev.yml`
+- `.env.dev`
+- `config.dev.json`
+- `alertados.dev.json`
 
-```bash
-echo "$GHCR_PAT" | docker login ghcr.io -u vocation261 --password-stdin
-```
-
-For private GHCR packages, PAT must include `read:packages`.
-
-4. Prepare app directory:
+Comandos:
 
 ```bash
-sudo mkdir -p /opt/akuma-bot
-sudo chown -R $USER:$USER /opt/akuma-bot
-cd /opt/akuma-bot
+docker compose -f docker-compose.dev.yml up --build -d
+docker compose -f docker-compose.dev.yml logs -f bot-dev
+docker compose -f docker-compose.dev.yml down
 ```
 
-5. Create `docker-compose.yml` and `.env` only on server.
+## Producción con Docker/OCI
 
-Example `.env`:
-
-```bash
-DISCORD_TOKEN=your_discord_token
-SYNC_GUILD_ID=
-YTDLP_ARGS=
-STREAM_URL_CACHE_TTL=300
-QUEUE_PLAYLIST_MAX_ITEMS=100
-PLAYER_MAX_RETRIES=2
-VC_CHANNEL_STATUS_ENABLED=true
-VC_CHANNEL_STATUS_PREFIX=🎙️ Space: 
-HISTORY_DB_PATH=data/history.db
-IDLE_DISCONNECT_SECONDS=60
-```
-
-6. Deploy:
+1. Preparar servidor (Docker instalado).
+2. Crear carpeta de despliegue (por ejemplo `/opt/akuma-bot`).
+3. Colocar `docker-compose.yml` + `.env` de producción.
+4. Si la imagen es privada en GHCR, autenticar con PAT (`read:packages`).
+5. Levantar:
 
 ```bash
 docker compose pull
@@ -83,10 +133,7 @@ docker compose up -d
 docker compose logs -f bot
 ```
 
-## Slash Sync Note
+## Nota sobre sync de comandos
 
-Set `SYNC_GUILD_ID` to a guild id to force instant slash command sync in that guild. If unset, global sync is used.
-
-## GHCR Visibility and Permissions
-
-If the image is private, the server must authenticate with a PAT that has `read:packages` and access to the repository owner package.
+Si defines `SYNC_GUILD_ID`, los slash commands se reflejan casi al instante en ese servidor.
+Si no lo defines, el sync es global (puede tardar más).

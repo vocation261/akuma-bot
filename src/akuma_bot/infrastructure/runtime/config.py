@@ -24,7 +24,6 @@ class AppConfig:
     discord_token: str
     ytdlp_args: str
     stream_url_cache_ttl: int
-    queue_playlist_max_items: int
     player_max_retries: int
     vc_channel_status_enabled: bool
     vc_channel_status_prefix: str
@@ -43,7 +42,6 @@ def load_config() -> AppConfig:
         discord_token=token,
         ytdlp_args=os.environ.get("YTDLP_ARGS", "").strip(),
         stream_url_cache_ttl=_as_int(os.environ.get("STREAM_URL_CACHE_TTL"), 300),
-        queue_playlist_max_items=_as_int(os.environ.get("QUEUE_PLAYLIST_MAX_ITEMS"), 100),
         player_max_retries=_as_int(os.environ.get("PLAYER_MAX_RETRIES"), 2),
         vc_channel_status_enabled=_as_bool(os.environ.get("VC_CHANNEL_STATUS_ENABLED"), True),
         vc_channel_status_prefix=os.environ.get("VC_CHANNEL_STATUS_PREFIX", "🎙️ Space: "),
