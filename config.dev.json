@@ -1,0 +1,7 @@
+{
+    "user_ids": [],
+    "check_interval": 600,
+    "username_map": {},
+    "retry_attempts": 3,
+    "retry_backoff_seconds": 1.0
+}

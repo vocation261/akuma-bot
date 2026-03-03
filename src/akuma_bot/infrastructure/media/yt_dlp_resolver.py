@@ -71,38 +71,6 @@ class YtDlpResolver:
         )
         return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
 
-    def is_playlist_url(self, url: str) -> bool:
-        lowered = (url or "").lower()
-        return bool(
-            re.search(r"youtube\.com/playlist\?", lowered)
-            or re.search(r"youtube\.com/watch.*[?&]list=", lowered)
-            or "/playlist/" in lowered
-        )
-
-    def expand_playlist_urls(self, url: str, extra_args: str = "", max_items: int = 100) -> list[str]:
-        extra = shlex.split(extra_args) if extra_args else []
-        try:
-            result = subprocess.run(
-                ["yt-dlp", "--flat-playlist", "--dump-json", "--no-warnings", "--quiet", *extra, url],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                urls: list[str] = []
-                for line in result.stdout.strip().splitlines():
-                    try:
-                        data = json.loads(line)
-                        item_url = data.get("url") or data.get("webpage_url") or ""
-                        if item_url:
-                            urls.append(item_url)
-                    except Exception:
-                        continue
-                return urls[:max_items]
-        except Exception as exc:
-            logger.debug("expand_playlist_urls failed: %s", exc)
-        return []
-
     def resolve_live_status(self, info: dict, source_is_space: bool) -> tuple[bool, str]:
         live_flag = info.get("live")
         if isinstance(live_flag, bool):

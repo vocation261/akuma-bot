@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import re
 import time
 
 import discord
@@ -84,74 +83,12 @@ def panel_signature(sessions, guild_id: int) -> tuple:
     )
 
 
-class SeekModal(discord.ui.Modal, title="Go to position"):
-    target_input = discord.ui.TextInput(
-        label="Target (12m, 1h20m, 12:34, 452)",
-        required=True,
-        max_length=24,
-        placeholder="12m | 1h20m | MM:SS | HH:MM:SS",
-    )
-
-    def __init__(self, guild_id: int, panel_message, voice_gateway, sessions):
-        super().__init__()
-        self.guild_id = guild_id
-        self.panel_message = panel_message
-        self.voice_gateway = voice_gateway
-        self.sessions = sessions
-
-    def parse_seconds(self, raw: str) -> int | None:
-        text = str(raw or "").strip().lower().replace(" ", "")
-        if not text:
-            return None
-        if text.isdigit():
-            return max(0, int(text))
-        if ":" in text:
-            parts = [part.strip() for part in text.split(":")]
-            if any((not part) or (not part.isdigit()) for part in parts):
-                return None
-            numbers = [int(part) for part in parts]
-            if len(numbers) == 2:
-                return max(0, numbers[0] * 60 + numbers[1])
-            if len(numbers) == 3:
-                return max(0, numbers[0] * 3600 + numbers[1] * 60 + numbers[2])
-            return None
-        tokens = re.findall(r"(\d+)([hms])", text)
-        if not tokens:
-            return None
-        total = 0
-        for number, unit in tokens:
-            total += int(number) * {"h": 3600, "m": 60, "s": 1}[unit]
-        return max(0, total)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        target = self.parse_seconds(str(self.target_input.value))
-        if target is None:
-            await interaction.response.send_message("Invalid format.", ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        ok, message = await self.voice_gateway.seek_to(interaction.guild, target)
-        try:
-            view = PanelView(self.guild_id, self.voice_gateway, self.sessions)
-            embed = build_panel_embed(self.sessions, interaction.guild, note=message)
-            await self.panel_message.edit(embed=embed, view=view)
-        except Exception:
-            pass
-        if ok:
-            try:
-                await interaction.delete_original_response()
-            except Exception:
-                pass
-        else:
-            await interaction.followup.send(message, ephemeral=True)
-
-
 class PanelView(discord.ui.View):
     def __init__(self, guild_id: int, voice_gateway, sessions):
         super().__init__(timeout=1800)
         self.guild_id = guild_id
         self.voice_gateway = voice_gateway
         self.sessions = sessions
-        self.clear_guard: dict[int, tuple[int, float]] = {}
         self.sync_buttons()
 
     def sync_buttons(self) -> None:
@@ -159,8 +96,6 @@ class PanelView(discord.ui.View):
         voice_client = session.voice_client
         has_voice = bool(voice_client and voice_client.is_connected())
         has_audio = has_voice and bool(voice_client.is_playing() or voice_client.is_paused())
-        is_paused = has_voice and bool(voice_client.is_paused())
-        is_live = session.is_live
         has_last = bool(session.last_play_url)
 
         muted = False
@@ -174,11 +109,7 @@ class PanelView(discord.ui.View):
         for button in self.children:
             custom_id = str(getattr(button, "custom_id", "") or "")
             key = custom_id.replace("sb:", "")
-            if key == "pause":
-                button.label = "▶️ Resume" if is_paused else "⏸️ Pause"
-                button.style = discord.ButtonStyle.secondary if is_paused else discord.ButtonStyle.primary
-                button.disabled = not has_audio or is_live
-            elif key == "mute":
+            if key == "mute":
                 button.label = "🔊 Unmute" if muted else "🔇 Mute"
                 button.style = discord.ButtonStyle.success if muted else discord.ButtonStyle.secondary
                 button.disabled = not has_voice
@@ -186,8 +117,6 @@ class PanelView(discord.ui.View):
                 button.disabled = not has_voice
             elif key == "restart":
                 button.disabled = not has_last
-            elif key in {"bk60", "bk5", "fw5", "fw30", "fw60", "seek_modal"}:
-                button.disabled = is_live or not has_audio
             elif key == "mark":
                 button.disabled = not has_audio
 
@@ -195,14 +124,6 @@ class PanelView(discord.ui.View):
         self.sync_buttons()
         embed = build_panel_embed(self.sessions, interaction.guild, note=note)
         await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="⏸️ Pause", style=discord.ButtonStyle.primary, row=0, custom_id="sb:pause")
-    async def pause_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.guild_id != self.guild_id:
-            await interaction.response.send_message("Panel belongs to another guild.", ephemeral=True)
-            return
-        _, message = await self.voice_gateway.pause_toggle(interaction.guild)
-        await self.refresh(interaction, message)
 
     @discord.ui.button(label="🔇 Mute", style=discord.ButtonStyle.secondary, row=0, custom_id="sb:mute")
     async def mute_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -245,65 +166,13 @@ class PanelView(discord.ui.View):
         )
         await self.refresh(interaction, result.get("message", ""))
 
-    @discord.ui.button(label="⏪ -1m", style=discord.ButtonStyle.primary, row=1, custom_id="sb:bk60")
-    async def back_1m_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        _, message = await self.voice_gateway.seek(interaction.guild, -60)
-        await self.refresh(interaction, message)
-
-    @discord.ui.button(label="⏪ -5m", style=discord.ButtonStyle.primary, row=1, custom_id="sb:bk5")
-    async def back_5m_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        _, message = await self.voice_gateway.seek(interaction.guild, -300)
-        await self.refresh(interaction, message)
-
-    @discord.ui.button(label="⏩ +5m", style=discord.ButtonStyle.primary, row=1, custom_id="sb:fw5")
-    async def forward_5m_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        _, message = await self.voice_gateway.seek(interaction.guild, 300)
-        await self.refresh(interaction, message)
-
-    @discord.ui.button(label="⏩ +30m", style=discord.ButtonStyle.primary, row=1, custom_id="sb:fw30")
-    async def forward_30m_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        _, message = await self.voice_gateway.seek(interaction.guild, 1800)
-        await self.refresh(interaction, message)
-
-    @discord.ui.button(label="⏩ +1h", style=discord.ButtonStyle.primary, row=1, custom_id="sb:fw60")
-    async def forward_1h_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        _, message = await self.voice_gateway.seek(interaction.guild, 3600)
-        await self.refresh(interaction, message)
-
-    @discord.ui.button(label="🎯 Seek", style=discord.ButtonStyle.secondary, row=2, custom_id="sb:seek_modal")
-    async def seek_modal_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(SeekModal(self.guild_id, interaction.message, self.voice_gateway, self.sessions))
-
-    @discord.ui.button(label="📍 Bookmark", style=discord.ButtonStyle.secondary, row=2, custom_id="sb:mark")
+    @discord.ui.button(label="📍 Bookmark", style=discord.ButtonStyle.secondary, row=1, custom_id="sb:mark")
     async def mark_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         session = self.sessions.guild(self.guild_id)
         await interaction.response.send_message(
             f"Bookmark saved at {format_elapsed(session.elapsed())} - {session.title or session.current_url}",
             ephemeral=False,
         )
-
-    @discord.ui.button(label="🧹 Clear chat", style=discord.ButtonStyle.secondary, row=3, custom_id="sb:clear")
-    async def clear_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.guild_id != self.guild_id:
-            await interaction.response.send_message("Panel belongs to another guild.", ephemeral=True)
-            return
-        user_id = interaction.user.id if interaction.user else 0
-        now = time.time()
-        step, timestamp = self.clear_guard.get(user_id, (0, 0.0))
-        if now - timestamp > 25:
-            step = 0
-        step += 1
-        self.clear_guard[user_id] = (step, now)
-        if step < 3:
-            await interaction.response.send_message(f"Confirmation {step}/3.", ephemeral=True)
-            return
-        self.clear_guard.pop(user_id, None)
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        try:
-            deleted = await interaction.channel.purge(limit=50)
-            await interaction.followup.send(f"Deleted {len(deleted)} messages.", ephemeral=True)
-        except Exception as exc:
-            await interaction.followup.send(f"Clear failed: {exc}", ephemeral=True)
 
 
 class DiscordPanelGateway:

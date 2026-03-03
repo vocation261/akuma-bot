@@ -36,6 +36,12 @@ def validate_playable_url(url: str) -> tuple[bool, str]:
     lowered = text.lower()
     if "discord.com/channels/" in lowered or "discordapp.com/channels/" in lowered:
         return False, "That is a Discord message URL, not playable media."
+    if not re.search(
+        r"https?://(?:www\.)?(?:x|twitter)\.com/(?:i/spaces/[A-Za-z0-9]+|[A-Za-z0-9_]+/spaces/[A-Za-z0-9]+)",
+        text,
+        re.IGNORECASE,
+    ):
+        return False, "Only X Space URLs are supported."
     return True, ""
 
 

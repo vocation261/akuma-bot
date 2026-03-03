@@ -40,7 +40,6 @@ class GuildSession:
     restarting_track: bool = False
     active_ytdlp_args: str = ""
     active_stream_cache_ttl: int = 300
-    active_queue_max_items: int = 100
     original_channel_status: str | None = None
     channel_status_overridden: bool = False
     current_channel_status: str = ""
@@ -77,7 +76,6 @@ class GuildSession:
         self.restarting_track = False
         self.active_ytdlp_args = ""
         self.active_stream_cache_ttl = 300
-        self.active_queue_max_items = 100
         self.original_channel_status = None
         self.channel_status_overridden = False
         self.current_channel_status = ""

@@ -144,11 +144,39 @@ class SqliteHistoryRepository:
             try:
                 cursor = connection.cursor()
                 cursor.execute(
-                    "SELECT ts, channel_id, user_id, url, title, position_sec, note "
+                    "SELECT id, ts, channel_id, user_id, url, title, position_sec, note "
                     "FROM bookmarks WHERE guild_id = ? ORDER BY id DESC LIMIT ?",
                     (int(guild_id or 0), max(1, int(limit or 10))),
                 )
                 return cursor.fetchall()
+            finally:
+                connection.close()
+
+    def delete_bookmark(self, guild_id: int, bookmark_id: int) -> bool:
+        with self.lock:
+            connection = self._connect()
+            try:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "DELETE FROM bookmarks WHERE guild_id = ? AND id = ?",
+                    (int(guild_id or 0), int(bookmark_id or 0)),
+                )
+                connection.commit()
+                return cursor.rowcount > 0
+            finally:
+                connection.close()
+
+    def clear_bookmarks(self, guild_id: int) -> int:
+        with self.lock:
+            connection = self._connect()
+            try:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "DELETE FROM bookmarks WHERE guild_id = ?",
+                    (int(guild_id or 0),),
+                )
+                connection.commit()
+                return int(cursor.rowcount or 0)
             finally:
                 connection.close()
 
