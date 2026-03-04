@@ -10,4 +10,6 @@ __all__ = [
     "GuildSession",
     "PlaybackError",
     "QueueItem",
+    "alerts",
+    "playback",
 ]

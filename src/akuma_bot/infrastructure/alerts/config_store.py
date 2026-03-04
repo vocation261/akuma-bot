@@ -35,6 +35,26 @@ def sanitize_alert_config(raw: dict | None) -> dict:
             if cleaned:
                 username_map[uid_str] = cleaned
 
+    user_channels_raw = payload.get("user_channels", {})
+    user_channels: dict[str, list[int]] = {}
+    if isinstance(user_channels_raw, dict):
+        for uid, channels in user_channels_raw.items():
+            uid_str = str(uid).strip()
+            if not uid_str.isdigit():
+                continue
+            if not isinstance(channels, list):
+                continue
+            cleaned_channels: list[int] = []
+            for channel in channels:
+                channel_str = str(channel).strip()
+                if not channel_str.isdigit():
+                    continue
+                channel_id = int(channel_str)
+                if channel_id not in cleaned_channels:
+                    cleaned_channels.append(channel_id)
+            if cleaned_channels:
+                user_channels[uid_str] = cleaned_channels
+
     try:
         interval = int(payload.get("check_interval", 600))
     except Exception:
@@ -58,6 +78,7 @@ def sanitize_alert_config(raw: dict | None) -> dict:
         "user_ids": user_ids,
         "check_interval": interval,
         "username_map": username_map,
+        "user_channels": user_channels,
         "retry_attempts": retry_attempts,
         "retry_backoff_seconds": retry_backoff_seconds,
     }

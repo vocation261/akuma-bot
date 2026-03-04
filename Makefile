@@ -7,3 +7,10 @@ run:
 
 compile:
 	python -m compileall src
+
+test:
+	python -m unittest discover -s tests -p "test_*.py"
+
+coverage:
+	python -m coverage run -m unittest discover -s tests -p "test_*.py"
+	python -m coverage report -m

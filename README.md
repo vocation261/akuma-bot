@@ -38,8 +38,8 @@ Esto evita tener dos bots/procesos separados para audio y alertas.
 - `/historycsv`: exporta historial a CSV.
 - `/diag`: diagnóstico rápido del estado del bot.
 - `/health`: snapshot operativo (latencia, uptime, voz, cola, etc.).
-- `/alert_add <@handle|id>`: agrega una cuenta X a monitoreo.
-- `/alert_remove <indice|id|@handle>`: elimina una cuenta monitoreada.
+- `/alert_add <@handle|id>`: agrega una cuenta X a monitoreo y registra el canal actual para las alertas de esa cuenta.
+- `/alert_remove <indice|id|@handle>`: quita la cuenta del canal actual; si ya no queda ningún canal asociado, la elimina del monitoreo.
 - `/alert_list`: lista cuentas monitoreadas.
 - `/alert_map <id> <handle>`: asocia ID de X con @handle.
 - `/alert_interval <segundos>`: cambia intervalo de escaneo.
@@ -61,7 +61,7 @@ Variables principales (opcional):
 - `SYNC_GUILD_ID` sincroniza slash commands instantáneamente en un servidor específico.
 - `HISTORY_DB_PATH` por defecto `data/history.db`.
 - `IDLE_DISCONNECT_SECONDS` por defecto `60`.
-- `DISCORD_ALERT_CHANNEL_IDS` lista de canales para alertas (separados por coma).
+- `DISCORD_ALERT_CHANNEL_IDS` lista de canales fallback para alertas (separados por coma).
 - `DISCORD_ALERT_CHANNEL_ID` fallback de un solo canal.
 - `DISCORD_ADMIN_CHANNEL_ID` canal para avisos de error/parcial de entrega.
 - `DISCORD_ALERT_MENTION_EVERYONE` por defecto `true`.
@@ -84,6 +84,22 @@ pip install -e .
 cp .env.example .env
 python -m akuma_bot.main
 ```
+
+## Tests
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+python -m coverage run -m unittest discover -s tests -p "test_*.py"
+python -m coverage report -m
+```
+
+## Estructura DDD (resumen)
+
+- `src/akuma_bot/domain/alerts` y `src/akuma_bot/domain/playback`: entidades y reglas de dominio.
+- `src/akuma_bot/application/alerts/use_cases` y `src/akuma_bot/application/playback/use_cases`: casos de uso.
+- `src/akuma_bot/infrastructure/alerts/services`: monitor/scraper como adaptadores.
+- `src/akuma_bot/infrastructure/discord/playback`: gateway de voz + servicios auxiliares.
+- `src/akuma_bot/infrastructure/discord/commands`: registro central y módulos de comandos.
 
 ## Desarrollo con Docker (aislado de prod)
 
