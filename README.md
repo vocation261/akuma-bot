@@ -15,30 +15,6 @@ BotkumaX unifica dos flujos en un solo proceso:
 
 Esto evita tener dos bots/procesos separados para audio y alertas.
 
-## Nota de versión
-
-### v0.2.0 (Marzo 2026)
-
-- Nuevo comando `/participants`:
-  - consulta participantes del Space actual por scraping;
-  - muestra host, co-hosts, speakers y listeners;
-  - ahora los `@usuarios` salen con link directo a su perfil en X.
-- Mejoras en bookmarks:
-  - `/mark` ahora acepta título opcional (`title`);
-  - calcula `Position` como diferencia real entre inicio UTC del Space y momento del bookmark;
-  - muestra `Space started (UTC)` y `Bookmarked (UTC)`.
-- `/bookmarks` extendido con acciones:
-  - `action:list` para listar;
-  - `action:delete bookmark_id:<id>` para borrar uno;
-  - `action:clear` para limpiar todos.
-- Simplificación de controles:
-  - se eliminaron comandos `/pause`, `/seek`, `/seekback`, `/seekto`;
-  - se quitaron botones del panel: `Pause`, `-1m`, `-5m`, `+5m`, `+30m`, `+1h`, `Seek`, `Clear chat`.
-- Enfoque solo X Spaces:
-  - se retiró soporte de reproducción YouTube.
-- Configuración del scraper movida a entorno:
-  - query IDs, bearer, endpoints y timeouts ahora se controlan vía `.env`.
-
 ## Comandos slash
 
 ### Player y utilidades
@@ -69,6 +45,12 @@ Esto evita tener dos bots/procesos separados para audio y alertas.
 - `/alert_interval <segundos>`: cambia intervalo de escaneo.
 - `/alert_status`: muestra estado del monitor de alertas.
 - `/alert_check`: fuerza un escaneo inmediato.
+
+### Formato de URL soportado
+
+- Válido: `https://x.com/i/spaces/<id>`
+- Ejemplo: `https://x.com/i/spaces/1RKjpzpmXpLJw`
+- No válido para reproducción: links `.../status/...` u otras rutas de X.
 
 ## Configuración de entorno
 
@@ -128,8 +110,8 @@ docker compose -f docker-compose.dev.yml down
 5. Levantar:
 
 ```bash
-docker compose pull
-docker compose up -d
+docker compose down --remove-orphans
+docker compose up -d --build
 docker compose logs -f bot
 ```
 
@@ -137,3 +119,38 @@ docker compose logs -f bot
 
 Si defines `SYNC_GUILD_ID`, los slash commands se reflejan casi al instante en ese servidor.
 Si no lo defines, el sync es global (puede tardar más).
+
+## Nota de versión
+
+### v0.0.3 (Marzo 2026)
+
+- Validación estricta de URL para reproducción:
+  - solo se acepta formato `https://x.com/i/spaces/<id>`.
+- Comportamiento de voz actualizado:
+  - el bot entra ensordecido al voice channel (escucha desactivada).
+- Auto-salida por inactividad:
+  - si pasan 5 minutos con solo el bot en VC, se desconecta y cierra sesión con aviso.
+- Cierre automático al terminar Space:
+  - si el Space termina, el bot sale del VC y publica un resumen (título, host, participantes, listeners, duración y URL).
+  
+### v0.2.0 (Marzo 2026)
+
+- Nuevo comando `/participants`:
+  - consulta participantes del Space actual por scraping;
+  - muestra host, co-hosts, speakers y listeners;
+  - ahora los `@usuarios` salen con link directo a su perfil en X.
+- Mejoras en bookmarks:
+  - `/mark` ahora acepta título opcional (`title`);
+  - calcula `Position` como diferencia real entre inicio UTC del Space y momento del bookmark;
+  - muestra `Space started (UTC)` y `Bookmarked (UTC)`.
+- `/bookmarks` extendido con acciones:
+  - `action:list` para listar;
+  - `action:delete bookmark_id:<id>` para borrar uno;
+  - `action:clear` para limpiar todos.
+- Simplificación de controles:
+  - se eliminaron comandos `/pause`, `/seek`, `/seekback`, `/seekto`;
+  - se quitaron botones del panel: `Pause`, `-1m`, `-5m`, `+5m`, `+30m`, `+1h`, `Seek`, `Clear chat`.
+- Enfoque solo X Spaces:
+  - se retiró soporte de reproducción YouTube.
+- Configuración del scraper movida a entorno:
+  - query IDs, bearer, endpoints y timeouts ahora se controlan vía `.env`.
