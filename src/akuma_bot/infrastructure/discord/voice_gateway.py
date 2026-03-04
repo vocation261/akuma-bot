@@ -262,7 +262,7 @@ class DiscordVoiceGateway:
             except Exception:
                 pass
         try:
-            connected = await target_channel.connect(reconnect=True, timeout=30.0, self_deaf=True)
+            connected = await target_channel.connect(reconnect=True, timeout=30.0)
             for _ in range(20):
                 if connected.is_connected():
                     return connected, ""
