@@ -4,7 +4,15 @@ from typing import Protocol
 
 
 class VoiceGateway(Protocol):
-    async def play(self, guild, user, url: str, mode: str = "recorded", force_vc_channel_id: int = 0) -> dict:
+    async def play(
+        self,
+        guild,
+        user,
+        url: str,
+        mode: str = "recorded",
+        force_vc_channel_id: int = 0,
+        text_channel_id: int = 0,
+    ) -> dict:
         ...
 
     async def pause_toggle(self, guild) -> tuple[bool, str]:

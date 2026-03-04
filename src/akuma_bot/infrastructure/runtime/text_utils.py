@@ -31,21 +31,17 @@ def format_elapsed(value: int) -> str:
 
 def validate_playable_url(url: str) -> tuple[bool, str]:
     text = str(url or "").strip()
-    if not re.match(r"https?://", text, re.IGNORECASE):
+    if not re.match(r"https://", text, re.IGNORECASE):
         return False, "Invalid URL. Please provide a full https URL."
     lowered = text.lower()
     if "discord.com/channels/" in lowered or "discordapp.com/channels/" in lowered:
         return False, "That is a Discord message URL, not playable media."
-    if not re.search(
-        r"https?://(?:www\.)?(?:x|twitter)\.com/(?:i/spaces/[A-Za-z0-9]+|[A-Za-z0-9_]+/spaces/[A-Za-z0-9]+)",
-        text,
-        re.IGNORECASE,
-    ):
-        return False, "Only X Space URLs are supported."
+    if not re.fullmatch(r"https://(?:www\.)?x\.com/i/spaces/[A-Za-z0-9]+(?:[/?#].*)?", text, re.IGNORECASE):
+        return False, "Use URL format: https://x.com/i/spaces/<id>"
     return True, ""
 
 
 def extract_space_id(url: str) -> str:
-    match = re.search(r"/spaces/([A-Za-z0-9]+)", str(url or ""))
+    match = re.search(r"/i/spaces/([A-Za-z0-9]+)", str(url or ""), re.IGNORECASE)
     return match.group(1) if match else ""
 

@@ -104,6 +104,7 @@ def build_app() -> AppDeps:
 
 
 async def idle_disconnect_loop(deps: AppDeps, idle_seconds: int = 60, interval: float = 5.0):
+    alone_timeout_seconds = 300
     while True:
         try:
             await asyncio.sleep(interval)
@@ -115,7 +116,21 @@ async def idle_disconnect_loop(deps: AppDeps, idle_seconds: int = 60, interval: 
                 voice_client = session.voice_client or getattr(guild, "voice_client", None)
                 if not voice_client or not voice_client.is_connected():
                     session.idle_since = None
+                    session.alone_since = None
                     continue
+                voice_channel = getattr(voice_client, "channel", None)
+                members = list(getattr(voice_channel, "members", []) or [])
+                humans = [m for m in members if not getattr(m, "bot", False)]
+                if len(humans) <= 0:
+                    if session.alone_since is None:
+                        session.alone_since = now
+                    elif (now - session.alone_since) >= float(alone_timeout_seconds):
+                        _, message = await deps.voice_gateway.stop_with_reason(guild, reason="inactivity")
+                        logger.info("Auto-disconnect (alone) in guild %s: %s", guild.id, message)
+                        session.alone_since = None
+                        session.idle_since = None
+                    continue
+                session.alone_since = None
                 if voice_client.is_playing() or voice_client.is_paused():
                     session.idle_since = None
                     continue
@@ -134,16 +149,24 @@ async def idle_disconnect_loop(deps: AppDeps, idle_seconds: int = 60, interval: 
 
 async def run_bot(deps: AppDeps):
     idle_task: asyncio.Task | None = None
+    panel_task: asyncio.Task | None = None
 
     @deps.client.event
     async def on_ready():
-        nonlocal idle_task
-        if deps.config.sync_guild_id:
-            guild_obj = discord.Object(id=int(deps.config.sync_guild_id))
-            await deps.tree.sync(guild=guild_obj)
-        else:
-            await deps.tree.sync()
-        asyncio.create_task(deps.panel_gateway.autorefresh_loop(deps.client))
+        nonlocal idle_task, panel_task
+        try:
+            if deps.config.sync_guild_id:
+                guild_obj = discord.Object(id=int(deps.config.sync_guild_id))
+                deps.tree.copy_global_to(guild=guild_obj)
+                synced = await deps.tree.sync(guild=guild_obj)
+                logger.info("Slash commands synced to guild %s: %s", deps.config.sync_guild_id, len(synced))
+            else:
+                synced = await deps.tree.sync()
+                logger.info("Global slash commands synced: %s", len(synced))
+        except Exception as exc:
+            logger.exception("Slash command sync failed: %s", exc)
+        if panel_task is None or panel_task.done():
+            panel_task = asyncio.create_task(deps.panel_gateway.autorefresh_loop(deps.client))
         deps.alert_monitor.start()
         if idle_task is None or idle_task.done():
             idle_task = asyncio.create_task(idle_disconnect_loop(deps, deps.config.idle_disconnect_seconds))

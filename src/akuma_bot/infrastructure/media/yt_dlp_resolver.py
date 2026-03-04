@@ -64,12 +64,14 @@ class YtDlpResolver:
         return ""
 
     def is_space_url(self, url: str) -> bool:
-        text = (url or "").lower()
-        patterns = (
-            r"https?://(?:www\.)?(?:x|twitter)\.com/i/spaces/[a-z0-9]+",
-            r"https?://(?:www\.)?(?:x|twitter)\.com/.+/spaces/[a-z0-9]+",
+        text = str(url or "").strip()
+        return bool(
+            re.fullmatch(
+                r"https://(?:www\.)?x\.com/i/spaces/[A-Za-z0-9]+(?:[/?#].*)?",
+                text,
+                re.IGNORECASE,
+            )
         )
-        return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
 
     def resolve_live_status(self, info: dict, source_is_space: bool) -> tuple[bool, str]:
         live_flag = info.get("live")

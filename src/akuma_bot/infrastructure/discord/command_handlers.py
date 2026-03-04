@@ -30,7 +30,13 @@ def register_commands(tree: app_commands.CommandTree, deps) -> None:
         if not ok_url:
             await interaction.followup.send(error, ephemeral=True)
             return
-        result = await voice_gateway.play(interaction.guild, interaction.user, url.strip(), mode="live")
+        result = await voice_gateway.play(
+            interaction.guild,
+            interaction.user,
+            url.strip(),
+            mode="live",
+            text_channel_id=int(interaction.channel_id or 0),
+        )
         if not result.get("ok"):
             await interaction.followup.send(result.get("message", "Error"), ephemeral=True)
             return
@@ -55,7 +61,13 @@ def register_commands(tree: app_commands.CommandTree, deps) -> None:
         if not ok_url:
             await interaction.followup.send(error, ephemeral=True)
             return
-        result = await voice_gateway.play(interaction.guild, interaction.user, url.strip(), mode="recorded")
+        result = await voice_gateway.play(
+            interaction.guild,
+            interaction.user,
+            url.strip(),
+            mode="recorded",
+            text_channel_id=int(interaction.channel_id or 0),
+        )
         if not result.get("ok"):
             await interaction.followup.send(result.get("message", "Error"), ephemeral=True)
             return

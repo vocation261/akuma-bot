@@ -30,6 +30,7 @@ class GuildSession:
     status_label: str = ""
     owner_user_id: int = 0
     last_vc_channel_id: int = 0
+    last_text_channel_id: int = 0
     last_play_url: str = ""
     last_play_mode: str = ""
     last_play_vc_channel_id: int = 0
@@ -46,6 +47,7 @@ class GuildSession:
     channel_status_enabled: bool = True
     channel_status_prefix: str = "🎙️ Space: "
     channel_status_warning: str = ""
+    alone_since: float | None = None
 
     def elapsed(self) -> int:
         if self.play_start_time is None:
@@ -80,3 +82,5 @@ class GuildSession:
         self.channel_status_overridden = False
         self.current_channel_status = ""
         self.channel_status_warning = ""
+        self.last_text_channel_id = 0
+        self.alone_since = None

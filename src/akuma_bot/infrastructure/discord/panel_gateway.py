@@ -68,6 +68,7 @@ def build_panel_embed(sessions, guild: discord.Guild, note: str = "") -> discord
 def panel_signature(sessions, guild_id: int) -> tuple:
     session = sessions.guild(guild_id)
     voice_client = session.voice_client
+    elapsed_bucket = session.elapsed() // 30
     return (
         bool(voice_client and voice_client.is_connected()),
         bool(voice_client and voice_client.is_playing()) if voice_client else False,
@@ -79,7 +80,7 @@ def panel_signature(sessions, guild_id: int) -> tuple:
         session.host,
         session.listeners,
         session.duration_str,
-        session.elapsed() // 5,
+        elapsed_bucket,
     )
 
 
@@ -163,6 +164,7 @@ class PanelView(discord.ui.View):
             session.last_play_url,
             mode=session.last_play_mode or "recorded",
             force_vc_channel_id=session.last_play_vc_channel_id,
+            text_channel_id=int(interaction.channel_id or 0),
         )
         await self.refresh(interaction, result.get("message", ""))
 

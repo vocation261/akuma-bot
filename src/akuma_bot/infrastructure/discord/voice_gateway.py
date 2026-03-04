@@ -20,7 +20,15 @@ class DiscordVoiceGateway:
         self.sessions = sessions
         self.media_resolver = media_resolver
 
-    async def play(self, guild, user, url: str, mode: str = "recorded", force_vc_channel_id: int = 0) -> dict:
+    async def play(
+        self,
+        guild,
+        user,
+        url: str,
+        mode: str = "recorded",
+        force_vc_channel_id: int = 0,
+        text_channel_id: int = 0,
+    ) -> dict:
         if not self.media_resolver.is_space_url(url):
             return {"ok": False, "status": "error", "message": "Only X Space URLs are supported."}
         session = self.sessions.guild(guild.id)
@@ -58,6 +66,9 @@ class DiscordVoiceGateway:
             voice_client, error = await self._get_or_connect_voice(guild, target_channel)
             if not voice_client:
                 return {"ok": False, "status": "error", "message": error}
+            if not voice_client.is_connected():
+                return {"ok": False, "status": "error", "message": "Voice connected but not ready yet. Try again in a few seconds."}
+            await self._ensure_self_deaf(guild, voice_client)
 
             if (voice_client.is_playing() or voice_client.is_paused()) and not session.restarting_track:
                 session.queue.append(QueueItem(url=url, mode=mode))
@@ -86,7 +97,12 @@ class DiscordVoiceGateway:
                 except Exception:
                     return
 
-            voice_client.play(source, after=after_playback)
+            try:
+                voice_client.play(source, after=after_playback)
+            except discord.ClientException as exc:
+                return {"ok": False, "status": "error", "message": f"Audio start failed: {exc}"}
+            except Exception as exc:
+                return {"ok": False, "status": "error", "message": f"Unexpected audio start error: {exc}"}
 
             session.voice_client = voice_client
             session.current_url = url
@@ -106,6 +122,8 @@ class DiscordVoiceGateway:
             session.status_label = "Live" if mode == "live" else "Recorded"
             session.owner_user_id = user.id
             session.last_vc_channel_id = target_channel.id
+            if text_channel_id:
+                session.last_text_channel_id = int(text_channel_id)
             session.last_play_url = url
             session.last_play_mode = mode
             session.last_play_vc_channel_id = target_channel.id
@@ -156,6 +174,15 @@ class DiscordVoiceGateway:
         session.voice_client = None
         session.reset()
         return True, "Disconnected."
+
+    async def stop_with_reason(self, guild, reason: str) -> tuple[bool, str]:
+        session = self.sessions.guild(guild.id)
+        details = self._session_details_snapshot(session)
+        notify_channel_id = int(session.last_text_channel_id or 0)
+        _, message = await self.stop(guild)
+        notice = self._build_end_notice(reason, details)
+        await self._notify_text_channel(guild, notice, preferred_channel_id=notify_channel_id)
+        return True, message
 
     async def mute_toggle(self, guild) -> tuple[bool, str]:
         session = self.sessions.guild(guild.id)
@@ -220,18 +247,27 @@ class DiscordVoiceGateway:
             if not getattr(permissions, "speak", False):
                 return None, "Missing Speak permission in voice channel."
         existing = guild.voice_client
-        if existing and existing.is_connected():
-            if existing.channel.id != target_channel.id:
-                try:
-                    await existing.move_to(target_channel)
-                except discord.Forbidden:
-                    return None, "No permission to move into that voice channel."
-                except Exception as exc:
-                    return None, f"Move failed: {exc}"
-            return existing, ""
+        if existing:
+            if existing.is_connected():
+                if existing.channel.id != target_channel.id:
+                    try:
+                        await existing.move_to(target_channel)
+                    except discord.Forbidden:
+                        return None, "No permission to move into that voice channel."
+                    except Exception as exc:
+                        return None, f"Move failed: {exc}"
+                return existing, ""
+            try:
+                await existing.disconnect(force=True)
+            except Exception:
+                pass
         try:
-            connected = await target_channel.connect()
-            return connected, ""
+            connected = await target_channel.connect(reconnect=True, timeout=30.0, self_deaf=True)
+            for _ in range(20):
+                if connected.is_connected():
+                    return connected, ""
+                await asyncio.sleep(0.25)
+            return None, "Voice gateway is not ready after connect."
         except discord.Forbidden:
             return None, "No permission to connect to voice."
         except Exception as exc:
@@ -362,6 +398,7 @@ class DiscordVoiceGateway:
                     next_item.url,
                     mode=next_item.mode,
                     force_vc_channel_id=session.last_vc_channel_id,
+                    text_channel_id=session.last_text_channel_id,
                 )
                 session.play_retry_count = 0
             finally:
@@ -377,9 +414,13 @@ class DiscordVoiceGateway:
                     session.current_url,
                     mode=session.last_play_mode or ("live" if session.is_live else "recorded"),
                     force_vc_channel_id=session.last_vc_channel_id,
+                    text_channel_id=session.last_text_channel_id,
                 )
             finally:
                 session.restarting_track = False
+            return
+        if session.is_live and session.current_url:
+            await self.stop_with_reason(guild, reason="space_ended")
 
     async def _set_channel_status(self, session, channel, text: str):
         if not session.channel_status_enabled:
@@ -417,6 +458,79 @@ class DiscordVoiceGateway:
             session.original_channel_status = None
             session.channel_status_overridden = False
             session.current_channel_status = ""
+
+    async def _ensure_self_deaf(self, guild: discord.Guild, voice_client: discord.VoiceClient) -> None:
+        try:
+            me = getattr(guild, "me", None)
+            me_voice = getattr(me, "voice", None) if me else None
+            if me_voice and getattr(me_voice, "self_deaf", False):
+                return
+            await guild.change_voice_state(channel=voice_client.channel, self_mute=False, self_deaf=True)
+        except Exception:
+            return
+
+    def _session_details_snapshot(self, session) -> dict:
+        host_value = "—"
+        if session.host:
+            host_value = str(session.host)
+        elif session.host_handle:
+            host_value = f"@{session.host_handle}"
+        return {
+            "title": str(session.title or "Unknown Space"),
+            "host": host_value,
+            "participants": int(session.participants or 0),
+            "listeners": int(session.listeners or 0),
+            "duration": format_elapsed(session.elapsed()),
+            "url": str(session.current_url or ""),
+        }
+
+    def _build_end_notice(self, reason: str, details: dict) -> str:
+        if reason == "inactivity":
+            return (
+                "Session ended by inactivity: bot was alone in voice channel for 5 minutes.\n"
+                f"Space: {details['title']}\n"
+                f"Host: {details['host']}\n"
+                f"Participants: {details['participants']:,}\n"
+                f"Listeners: {details['listeners']:,}\n"
+                f"Duration played: {details['duration']}\n"
+                f"URL: {details['url'] or '—'}"
+            )
+        if reason == "space_ended":
+            return (
+                "Session ended: the Space stream has finished.\n"
+                f"Space: {details['title']}\n"
+                f"Host: {details['host']}\n"
+                f"Participants: {details['participants']:,}\n"
+                f"Listeners: {details['listeners']:,}\n"
+                f"Duration played: {details['duration']}\n"
+                f"URL: {details['url'] or '—'}"
+            )
+        return "Session ended."
+
+    async def _notify_text_channel(self, guild: discord.Guild, message: str, preferred_channel_id: int = 0) -> None:
+        session = self.sessions.guild(guild.id)
+        channel = None
+        if preferred_channel_id:
+            channel = guild.get_channel(int(preferred_channel_id))
+        if not channel and session.last_text_channel_id:
+            channel = guild.get_channel(int(session.last_text_channel_id))
+        if not channel:
+            prefix = f"{guild.id}:"
+            for key in list(self.sessions.panel_messages.keys()):
+                if key.startswith(prefix):
+                    try:
+                        _, channel_id_str = key.split(":", 1)
+                        channel = guild.get_channel(int(channel_id_str))
+                    except Exception:
+                        channel = None
+                    if channel:
+                        break
+        if channel and hasattr(channel, "send"):
+            try:
+                await channel.send(message)
+            except Exception:
+                return
+            return
 
     def _build_play_embed(self, url: str, mode: str, channel, user):
         color = 0xED4245 if mode == "live" else 0x57F287
