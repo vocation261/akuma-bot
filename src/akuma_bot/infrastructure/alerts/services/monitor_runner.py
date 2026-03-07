@@ -29,46 +29,46 @@ def _format_count(value: Any) -> str:
     try:
         return str(int(value))
     except Exception:
-        return "No disponible"
+        return "Unavailable"
 
 
 def build_space_alert_embed(space: dict[str, Any]) -> discord.Embed:
     state = str(space.get("state") or "").lower()
     if state in {"running", "live", ""}:
         state_label = "LIVE"
-        title = "🚨 SPACE EN VIVO"
-        description = "Se detectó un Space activo."
+        title = "🚨 LIVE SPACE"
+        description = "An active Space was detected."
         color = 0x57F287
     elif state == "ended":
         state_label = "ENDED"
-        title = "✅ SPACE FINALIZADO"
-        description = "El Space terminó."
+        title = "✅ SPACE ENDED"
+        description = "The Space has ended."
         color = 0xFEE75C
     else:
         state_label = state.upper() if state else "LIVE"
-        title = "🚨 SPACE EN VIVO"
-        description = "Se detectó actividad de Space."
+        title = "🚨 LIVE SPACE"
+        description = "Space activity detected."
         color = 0x57F287
 
     space_id = str(space.get("id") or "")
     space_url = f"https://x.com/i/spaces/{space_id}" if space_id else "https://x.com"
     username = str(space.get("username") or "").strip().lstrip("@")
-    name = str(space.get("name") or "").strip() or username or "desconocido"
-    creator_id = str(space.get("creator_id") or "desconocido")
+    name = str(space.get("name") or "").strip() or username or "unknown"
+    creator_id = str(space.get("creator_id") or "unknown")
     listeners = _format_count(space.get("listener_count"))
     followers = _format_count(space.get("followers_count"))
-    title_value = str(space.get("title") or "(Sin título)")
+    title_value = str(space.get("title") or "(Untitled)")
     profile_url = f"https://x.com/{username}" if username else "https://x.com"
 
     embed = discord.Embed(title=title, description=description, url=space_url, color=color)
-    embed.add_field(name="📡 Estado", value=state_label, inline=True)
+    embed.add_field(name="📡 Status", value=state_label, inline=True)
     embed.add_field(name="👤 Host", value=f"[{name}]({profile_url})", inline=True)
-    embed.add_field(name="🔖 Usuario", value=f"@{username}" if username else "desconocido", inline=True)
+    embed.add_field(name="🔖 Username", value=f"@{username}" if username else "unknown", inline=True)
     embed.add_field(name="🆔 Host ID", value=creator_id, inline=True)
-    embed.add_field(name="👥 Seguidores host", value=followers, inline=True)
-    embed.add_field(name="🎧 Oyentes ahora", value=listeners, inline=True)
-    embed.add_field(name="📝 Título", value=title_value[:1024], inline=False)
-    embed.add_field(name="🔗 Enlace", value=space_url, inline=False)
+    embed.add_field(name="👥 Host followers", value=followers, inline=True)
+    embed.add_field(name="🎧 Listeners now", value=listeners, inline=True)
+    embed.add_field(name="📝 Title", value=title_value[:1024], inline=False)
+    embed.add_field(name="🔗 Link", value=space_url, inline=False)
     embed.set_footer(text="BotkumaX Alerts")
     embed.timestamp = datetime.now(timezone.utc)
 
@@ -271,7 +271,7 @@ class SpaceAlertMonitor:
             if admin_channel:
                 try:
                     await admin_channel.send(
-                        f"⚠️ Alerta de Space `{space_id}` enviada parcialmente: {ok_count}/{len(channels)} canales."
+                        f"⚠️ Space alert `{space_id}` delivered partially: {ok_count}/{len(channels)} channels."
                     )
                 except Exception:
                     pass
@@ -301,10 +301,10 @@ class SpaceAlertMonitor:
         user_channels = config.get("user_channels", {})
         mapped_channels = sum(len(channels) for channels in user_channels.values())
         return (
-            f"Vigiladas: {len(config.get('user_ids', []))}\n"
-            f"Intervalo: {config.get('check_interval', 600)}s\n"
-            f"Canales por cuenta: {mapped_channels}\n"
-            f"Canales alerta: {channel_ids or ['(sin configurar)']}\n"
+            f"Monitored: {len(config.get('user_ids', []))}\n"
+            f"Interval: {config.get('check_interval', 600)}s\n"
+            f"Channels per account: {mapped_channels}\n"
+            f"Alert channels: {channel_ids or ['(not configured)']}\n"
             f"Config: {self.config_repo.path}\n"
-            f"Alertados: {self.alerted_repo.path}"
+            f"Alerted: {self.alerted_repo.path}"
         )

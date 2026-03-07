@@ -9,6 +9,8 @@ from typing import Any
 
 import requests
 
+from akuma_bot.infrastructure.runtime.text_utils import extract_space_id_from_text
+
 def _env_csv(name: str) -> list[str]:
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -64,18 +66,6 @@ GQL_USER_TWEETS_FEATURES = _env_json("X_GQL_USER_TWEETS_FEATURES_JSON")
 GQL_AUDIO_SPACE_FEATURES = _env_json("X_GQL_AUDIO_SPACE_FEATURES_JSON")
 
 
-def _extract_space_id_from_text(text: str | None) -> str:
-    if not text:
-        return ""
-    match = re.search(r"/i/spaces/([A-Za-z0-9]+)", text)
-    if match:
-        return match.group(1)
-    match = re.search(r"/spaces/([A-Za-z0-9]+)", text)
-    if match:
-        return match.group(1)
-    return ""
-
-
 def _extract_space_candidates(obj: Any, out: set[str]) -> None:
     if isinstance(obj, dict):
         binding_values = obj.get("binding_values")
@@ -90,7 +80,7 @@ def _extract_space_candidates(obj: Any, out: set[str]) -> None:
                     if re.fullmatch(r"[A-Za-z0-9]{12,20}", candidate):
                         out.add(candidate)
                 if key == "card_url":
-                    candidate = _extract_space_id_from_text(str(value.get("string_value") or ""))
+                    candidate = extract_space_id_from_text(str(value.get("string_value") or ""))
                     if candidate:
                         out.add(candidate)
         for value in obj.values():
@@ -103,7 +93,7 @@ def _extract_space_candidates(obj: Any, out: set[str]) -> None:
         return
 
     if isinstance(obj, str):
-        candidate = _extract_space_id_from_text(obj)
+        candidate = extract_space_id_from_text(obj)
         if candidate:
             out.add(candidate)
 
@@ -258,20 +248,20 @@ class XSpacesScraper:
     def get_user_id(self, username: str) -> tuple[str | None, str | None]:
         missing = self._missing_env()
         if missing:
-            return None, f"Faltan variables env del scraper: {', '.join(missing)}"
+            return None, f"Missing scraper env vars: {', '.join(missing)}"
         cleaned = str(username or "").strip()
         cleaned = re.sub(r"^https?://(www\.)?(x\.com|twitter\.com)/", "", cleaned, flags=re.IGNORECASE)
         cleaned = cleaned.split("/")[0].split("?")[0].split("#")[0].strip().lstrip("@")
         if not cleaned:
-            return None, "Handle vacio. Usa @usuario o URL como https://x.com/usuario"
+            return None, "Empty handle. Use @username or URL like https://x.com/username"
 
         result, error = self._graphql_user_result(cleaned)
         if error == "rate_limit":
-            return None, "Demasiadas peticiones a Twitter, espera unos minutos."
+            return None, "Too many Twitter requests, please wait a few minutes."
         uid = str(result.get("rest_id", "") or "")
         if uid:
             return uid, None
-        return None, f"No se pudo resolver @{cleaned}. Verifica el handle."
+        return None, f"Could not resolve @{cleaned}. Please verify the handle."
 
     def _get_usernames_from_ids(self, user_ids: list[str], guest_token: str) -> dict[str, str]:
         result: dict[str, str] = {}
@@ -370,7 +360,7 @@ class XSpacesScraper:
                 listeners = ((audio_space.get("participants") or {}).get("total"))
             return {
                 "id": str(space_id),
-                "title": str(metadata.get("title") or "(Sin título)"),
+                "title": str(metadata.get("title") or "(Untitled)"),
                 "state": str(metadata.get("state") or "").lower(),
                 "listener_count": int(listeners or 0),
                 "creator_id": str(creator.get("rest_id") or ""),
@@ -493,26 +483,26 @@ class XSpacesScraper:
     def get_space_participants(self, space_ref: str) -> dict:
         missing = self._missing_env()
         if missing:
-            return {"ok": False, "error": f"Faltan variables env del scraper: {', '.join(missing)}"}
+            return {"ok": False, "error": f"Missing scraper env vars: {', '.join(missing)}"}
         space_id = str(space_ref or "").strip()
         if "/" in space_id:
-            space_id = _extract_space_id_from_text(space_id)
+            space_id = extract_space_id_from_text(space_id)
         if not re.fullmatch(r"[A-Za-z0-9]{12,20}", space_id):
-            return {"ok": False, "error": "Space ID/url invalido."}
+            return {"ok": False, "error": "Invalid Space ID/URL."}
 
         guest_token = self._get_guest_token()
         if not guest_token:
-            return {"ok": False, "error": "No se pudo obtener guest token de X."}
+            return {"ok": False, "error": "Could not obtain X guest token."}
 
         payload = self._get_audio_space_payload(space_id, guest_token)
         if not payload:
-            return {"ok": False, "error": "No se pudo consultar AudioSpaceById."}
+            return {"ok": False, "error": "Could not query AudioSpaceById."}
 
         audio_space = (payload.get("data") or {}).get("audioSpace") or {}
         metadata = audio_space.get("metadata") or {}
         participants = audio_space.get("participants") or {}
         if not metadata:
-            return {"ok": False, "error": "Space no encontrado o sin metadata."}
+            return {"ok": False, "error": "Space not found or missing metadata."}
 
         host = self._parse_user((metadata.get("creator_results") or {}).get("result") or {})
         host_id = str(host.get("id") or "")
@@ -561,7 +551,7 @@ class XSpacesScraper:
         return {
             "ok": True,
             "space_id": space_id,
-            "title": str(metadata.get("title") or "(Sin título)"),
+            "title": str(metadata.get("title") or "(Untitled)"),
             "state": str(metadata.get("state") or "").lower(),
             "host": host,
             "cohosts": cohosts,
@@ -574,24 +564,24 @@ class XSpacesScraper:
     def get_space_timing(self, space_ref: str) -> dict:
         missing = self._missing_env()
         if missing:
-            return {"ok": False, "error": f"Faltan variables env del scraper: {', '.join(missing)}"}
+            return {"ok": False, "error": f"Missing scraper env vars: {', '.join(missing)}"}
 
         space_id = str(space_ref or "").strip()
         if "/" in space_id:
-            space_id = _extract_space_id_from_text(space_id)
+            space_id = extract_space_id_from_text(space_id)
         if not re.fullmatch(r"[A-Za-z0-9]{12,20}", space_id):
-            return {"ok": False, "error": "Space ID/url invalido."}
+            return {"ok": False, "error": "Invalid Space ID/URL."}
 
         guest_token = self._get_guest_token()
         if not guest_token:
-            return {"ok": False, "error": "No se pudo obtener guest token de X."}
+            return {"ok": False, "error": "Could not obtain X guest token."}
 
         payload = self._get_audio_space_payload(space_id, guest_token)
         if not payload:
-            return {"ok": False, "error": "No se pudo consultar AudioSpaceById."}
+            return {"ok": False, "error": "Could not query AudioSpaceById."}
         metadata = (((payload.get("data") or {}).get("audioSpace") or {}).get("metadata") or {})
         if not metadata:
-            return {"ok": False, "error": "Space no encontrado o sin metadata."}
+            return {"ok": False, "error": "Space not found or missing metadata."}
 
         started_at_ms = metadata.get("started_at")
         if started_at_ms is None:
@@ -656,7 +646,7 @@ class XSpacesScraper:
             is_live = bool(data.get("is_live", False)) or live_status in {"is_live", "live"}
             return {
                 "id": str(data.get("id") or space_id),
-                "title": str(data.get("fulltitle") or data.get("title") or "(Sin título)"),
+                "title": str(data.get("fulltitle") or data.get("title") or "(Untitled)"),
                 "state": "running" if is_live else "ended",
                 "username": str(data.get("uploader_id") or ""),
                 "name": str(data.get("uploader") or ""),
@@ -715,7 +705,7 @@ class XSpacesScraper:
                         found.append(
                             {
                                 "id": sid,
-                                "title": str(metadata.get("title") or "(Sin título)"),
+                                "title": str(metadata.get("title") or "(Untitled)"),
                                 "state": state,
                                 "listener_count": int(metadata.get("total_live_listeners") or 0),
                                 "creator_id": rest_id,
@@ -813,7 +803,7 @@ class XSpacesScraper:
 
                 if ytdlp_info:
                     if not info.get("title"):
-                        info["title"] = ytdlp_info.get("title", "(Sin título)")
+                        info["title"] = ytdlp_info.get("title", "(Untitled)")
                     if not info.get("username"):
                         info["username"] = ytdlp_info.get("username", "")
                     if not info.get("name"):

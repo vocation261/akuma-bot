@@ -30,21 +30,21 @@ async def add_account_to_channel(config_repo, scraper, value: str, channel_id: i
             if was_attached:
                 config["user_channels"] = user_channels
                 config_repo.save(config)
-                return True, f"ID `{cleaned}` ya existia; se agrego este canal para alertas."
-            return False, f"El ID `{cleaned}` ya existe."
+                return True, f"ID `{cleaned}` already existed; this channel was added for alerts."
+            return False, f"ID `{cleaned}` already exists."
         user_ids.append(cleaned)
         attach_channel(cleaned)
         config["user_ids"] = user_ids
         config["username_map"] = username_map
         config["user_channels"] = user_channels
         config_repo.save(config)
-        return True, f"ID `{cleaned}` agregado."
+        return True, f"ID `{cleaned}` added."
 
     user_id, error = await asyncio.to_thread(scraper.get_user_id, cleaned)
     if error:
-        return False, f"No se pudo resolver @{cleaned}: {error}"
+        return False, f"Could not resolve @{cleaned}: {error}"
     if not user_id:
-        return False, f"No se pudo resolver @{cleaned}."
+        return False, f"Could not resolve @{cleaned}."
 
     if user_id in user_ids:
         was_attached = attach_channel(user_id)
@@ -54,8 +54,8 @@ async def add_account_to_channel(config_repo, scraper, value: str, channel_id: i
         config["user_channels"] = user_channels
         config_repo.save(config)
         if was_attached:
-            return True, f"@{cleaned} (ID `{user_id}`) ya existia; se agrego este canal para alertas."
-        return False, f"@{cleaned} (ID `{user_id}`) ya está en la lista."
+            return True, f"@{cleaned} (ID `{user_id}`) already existed; this channel was added for alerts."
+        return False, f"@{cleaned} (ID `{user_id}`) is already in the list."
 
     user_ids.append(user_id)
     username_map[user_id] = cleaned
@@ -64,7 +64,7 @@ async def add_account_to_channel(config_repo, scraper, value: str, channel_id: i
     config["username_map"] = username_map
     config["user_channels"] = user_channels
     config_repo.save(config)
-    return True, f"@{cleaned} agregado con ID `{user_id}`."
+    return True, f"@{cleaned} added with ID `{user_id}`."
 
 
 def remove_account_from_channel(config_repo, value: str, channel_id: int | None = None) -> tuple[bool, str]:
@@ -75,7 +75,7 @@ def remove_account_from_channel(config_repo, value: str, channel_id: int | None 
     user_channels = dict(config.get("user_channels", {}))
 
     if not user_ids:
-        return False, "No hay cuentas cargadas."
+        return False, "No accounts configured."
 
     if cleaned.isdigit():
         index = int(cleaned)
@@ -84,7 +84,7 @@ def remove_account_from_channel(config_repo, value: str, channel_id: int | None 
         else:
             target_user_id = cleaned if cleaned in user_ids else ""
         if not target_user_id:
-            return False, "No se encontró ese ID o posición."
+            return False, "ID or position not found."
     else:
         target_user_id = ""
         for user_id, username in username_map.items():
@@ -92,7 +92,7 @@ def remove_account_from_channel(config_repo, value: str, channel_id: int | None 
                 target_user_id = user_id
                 break
         if not target_user_id:
-            return False, "No se encontró ese handle."
+            return False, "Handle not found."
 
     removed_from_channel = False
     if channel_id:
@@ -111,8 +111,8 @@ def remove_account_from_channel(config_repo, value: str, channel_id: int | None 
         config["user_channels"] = user_channels
         config_repo.save(config)
         if removed_from_channel:
-            return True, f"Cuenta `{target_user_id}` removida de este canal."
-        return False, f"La cuenta `{target_user_id}` sigue activa en otros canales."
+            return True, f"Account `{target_user_id}` removed from this channel."
+        return False, f"Account `{target_user_id}` is still active in other channels."
 
     if target_user_id in user_ids:
         user_ids.remove(target_user_id)
@@ -122,7 +122,7 @@ def remove_account_from_channel(config_repo, value: str, channel_id: int | None 
     config["username_map"] = username_map
     config["user_channels"] = user_channels
     config_repo.save(config)
-    return True, f"Cuenta `{target_user_id}` eliminada."
+    return True, f"Account `{target_user_id}` removed."
 
 
 def list_accounts(config_repo) -> tuple[list[str], dict[str, str]]:
@@ -160,24 +160,24 @@ def map_username(config_repo, user_id: str, username: str) -> tuple[bool, str]:
     normalized_handle = str(username or "").strip().lstrip("@")
 
     if not normalized_user_id.isdigit():
-        return False, "El ID debe ser numérico."
+        return False, "ID must be numeric."
     if not normalized_handle:
-        return False, "Debes indicar un @handle válido."
+        return False, "You must provide a valid @handle."
 
     config = config_repo.load()
     user_ids = list(config.get("user_ids", []))
     if normalized_user_id not in user_ids:
-        return False, f"El ID `{normalized_user_id}` no está en vigilancia."
+        return False, f"ID `{normalized_user_id}` is not being monitored."
 
     username_map = dict(config.get("username_map", {}))
     username_map[normalized_user_id] = normalized_handle
     config["username_map"] = username_map
     config_repo.save(config)
-    return True, f"Mapeo actualizado: `{normalized_user_id}` -> `@{normalized_handle}`."
+    return True, f"Mapping updated: `{normalized_user_id}` -> `@{normalized_handle}`."
 
 
 def set_interval(config_repo, seconds: int) -> tuple[bool, str]:
     config = config_repo.load()
     config["check_interval"] = max(10, int(seconds))
     config_repo.save(config)
-    return True, f"Intervalo de alertas actualizado a {config['check_interval']}s."
+    return True, f"Alert interval updated to {config['check_interval']}s."

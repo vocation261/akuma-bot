@@ -9,7 +9,5 @@ services:
       - .env.dev
     volumes:
       - ./src:/app/src
-      - ./data:/app/data
+      - ./data-dev:/app/data
       - ./.env.dev:/app/.env:ro
-      - ./config.dev.json:/app/config.dev.json
-      - ./alertados.dev.json:/app/alertados.dev.json

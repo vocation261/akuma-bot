@@ -3,14 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/vocation261/akuma-bot:latest
-    container_name: BotkumaX
+    image: prod-botkumax:latest
+    container_name: prod-botkumax
     restart: unless-stopped
     env_file:
       - .env
     volumes:
-      - ./src:/app/src
-      - ./data:/app/data
+      - ./data-prod:/app/data
       - ./.env:/app/.env:ro
-      - ./config.json:/app/config.json
-      - ./alertados.json:/app/alertados.json

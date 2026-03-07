@@ -25,7 +25,7 @@ class ManageAlertAccountsTests(unittest.TestCase):
         repo = InMemoryConfigRepo({"user_ids": [], "username_map": {}, "user_channels": {}})
         is_success, message = asyncio.run(add_account_to_channel(repo, scraper=Mock(), value="123", channel_id=77))
         self.assertTrue(is_success)
-        self.assertIn("agregado", message)
+        self.assertIn("added", message)
         self.assertEqual(repo.data["user_ids"], ["123"])
         self.assertEqual(repo.data["user_channels"]["123"], [77])
 
@@ -33,14 +33,14 @@ class ManageAlertAccountsTests(unittest.TestCase):
         repo = InMemoryConfigRepo({"user_ids": ["123"], "username_map": {}, "user_channels": {"123": [10]}})
         is_success, message = asyncio.run(add_account_to_channel(repo, scraper=Mock(), value="123", channel_id=20))
         self.assertTrue(is_success)
-        self.assertIn("este canal", message)
+        self.assertIn("this channel", message)
         self.assertEqual(repo.data["user_channels"]["123"], [10, 20])
 
     def test_remove_only_current_channel_preserves_global_account(self):
         repo = InMemoryConfigRepo({"user_ids": ["123"], "username_map": {"123": "user"}, "user_channels": {"123": [10, 20]}})
         is_success, message = remove_account_from_channel(repo, "123", channel_id=10)
         self.assertTrue(is_success)
-        self.assertIn("canal", message)
+        self.assertIn("channel", message)
         self.assertEqual(repo.data["user_ids"], ["123"])
         self.assertEqual(repo.data["user_channels"]["123"], [20])
 
@@ -48,7 +48,7 @@ class ManageAlertAccountsTests(unittest.TestCase):
         repo = InMemoryConfigRepo({"user_ids": ["123"], "username_map": {"123": "user"}, "user_channels": {"123": [10]}})
         is_success, message = remove_account_from_channel(repo, "123", channel_id=10)
         self.assertTrue(is_success)
-        self.assertIn("eliminada", message)
+        self.assertIn("removed", message)
         self.assertNotIn("123", repo.data["user_ids"])
         self.assertNotIn("123", repo.data["user_channels"])
 
