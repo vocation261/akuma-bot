@@ -121,7 +121,6 @@ All notable project changes are documented in this file.
 
 ---
 
-## Audit and History (March 2026)
 
 ### User Attribution Across Actions
 
@@ -138,33 +137,3 @@ All critical actions now store who executed them, when, and what was changed:
 - Shows recent administrative events
 - Supports filtering by event type (`bookmark_add`, `alert_remove`, etc.)
 - Shows user, timestamp, resource ID/name, and details
-
-### Database Enhancements
-
-**New `audit_log` table**
-- Centralized administrative event tracking
-- Stores timestamp, user, event, and resource metadata
-
-**New columns in `play_history`**
-- `user_name`, `user_tag`, `event_type`
-
-**New columns in `bookmarks`**
-- `user_name`, `user_tag`
-
----
-
-## Roadmap
-
-### Phase 2 (Domain Refactor)
-- [ ] DDD refactor for `domain/playback/`
-- [ ] DDD refactor for `domain/alerts/`
-
-### Phase 3 (Consolidation)
-- [ ] Consolidate dependency injection with a standard container
-- [ ] Add multi-context integration tests (playback, alerts, history)
-- [ ] Expand architecture-pattern documentation
-
-### Phase 4 (Scalability)
-- [ ] Multi-DB support (MongoDB, PostgreSQL) via pluggable adapters
-- [ ] Distributed cache for Space metadata
-- [ ] Performance metrics and observability

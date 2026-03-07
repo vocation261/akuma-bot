@@ -1,15 +1,15 @@
-"""Audio transcription using faster-whisper."""
+"""Audio transcription using Vosk."""
 
 from __future__ import annotations
 
-import concurrent.futures
+import json
 import logging
-import multiprocessing
 import os
 import subprocess
+import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, List, Tuple
 
 from akuma_bot.infrastructure.runtime.text_utils import probe_audio_duration_seconds
 
@@ -152,15 +152,17 @@ def transcribe_audio(
     progress_callback: Callable[[int], None] | None = None,
 ) -> Tuple[bool, str, TranscriptionResult | None]:
     """
-    Transcribe audio file using faster-whisper.
+    Transcribe audio file using Vosk.
 
     Args:
         audio_path: Path to audio file (MP3, M4A, WAV, etc.)
         output_dir: Directory to save transcription TXT
-        model_size: Whisper model size (tiny, base, small, medium, large)
+        model_size: Ignored (Vosk uses lightweight models)
         language: Language code (es, en, etc.)
-        device: Device to use (cpu, cuda)
-        compute_type: Compute precision (int8, float16, float32)
+        device: Ignored (Vosk runs on CPU)
+        compute_type: Ignored (Vosk runs on CPU)
+        timestamp_offset_sec: Timestamp offset for this part
+        progress_callback: Optional callback(percent)
 
     Returns:
         Tuple of (success: bool, message: str, result: TranscriptionResult | None)
@@ -171,12 +173,13 @@ def transcribe_audio(
             return False, "ffmpeg not found", None
 
         try:
-            from faster_whisper import WhisperModel
+            import vosk
         except ImportError:
-            return False, "faster-whisper not installed", None
+            return False, "vosk not installed", None
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Convert to WAV if needed
         if audio_path.suffix.lower() not in [".wav"]:
             logger.info(f"Converting {audio_path.name} to WAV...")
             success, msg, wav_path = _convert_to_wav(audio_path, ffmpeg)
@@ -186,29 +189,12 @@ def transcribe_audio(
         else:
             audio_for_transcription = audio_path
 
-        logger.info(f"Loading Whisper model: {model_size} ({device}/{compute_type})")
-        model = WhisperModel(
-            model_size,
-            device=device,
-            compute_type=compute_type,
-            cpu_threads=max(1, multiprocessing.cpu_count() - 1),
-        )
-
-        logger.info(f"Transcribing {audio_for_transcription.name}...")
-        segments, info = model.transcribe(
-            str(audio_for_transcription),
-            language=language,
-            beam_size=1,
-            vad_filter=True,
-            word_timestamps=False,
-        )
-
-        lines: List[str] = []
-        minute_segments: Dict[int, List[str]] = {}
-        current_minute = -1
-        minute_text: List[str] = []
-        duration_for_progress = float(info.duration or 0.0)
-        last_reported_percent = -1
+        # Load Vosk model
+        logger.info(f"Loading Vosk model: {language}")
+        try:
+            model = vosk.Model(lang=language)
+        except Exception as e:
+            return False, f"Model loading failed: {str(e)[:200]}", None
 
         if progress_callback:
             try:
@@ -216,59 +202,119 @@ def transcribe_audio(
             except Exception:
                 pass
 
-        for segment in segments:
-            start_min = int(segment.start // 60)
+        # Open WAV file
+        wf = wave.open(str(audio_for_transcription), "rb")
+        if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() not in [8000, 16000, 32000, 48000]:
+            wf.close()
+            return False, "Audio must be WAV mono PCM 16kHz", None
 
-            if progress_callback and duration_for_progress > 0:
+        # Initialize recognizer
+        recognizer = vosk.KaldiRecognizer(model, wf.getframerate())
+        recognizer.SetWords(True)
+
+        logger.info(f"Transcribing {audio_for_transcription.name}...")
+
+        # Format timestamp helper
+        def format_timestamp(seconds: float) -> str:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            secs = int(seconds % 60)
+            return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+        # Process audio in chunks and group by minute intervals
+        minute_segments: dict[int, list[str]] = {}  # {minute_number: [words]}
+        total_frames = wf.getnframes()
+        processed_frames = 0
+        last_reported_percent = -1
+        frame_rate = wf.getframerate()
+
+        def add_result_to_minutes(result_payload: dict[str, object]) -> None:
+            words = result_payload.get("result")
+            if not isinstance(words, list):
+                text = str(result_payload.get("text") or "").strip()
+                if not text:
+                    return
+                current_sec = timestamp_offset_sec + (processed_frames / frame_rate)
+                minute_number = int(current_sec // 60)
+                minute_segments.setdefault(minute_number, []).append(text)
+                return
+
+            for word_item in words:
+                if not isinstance(word_item, dict):
+                    continue
+                token = str(word_item.get("word") or "").strip()
+                if not token:
+                    continue
+                start_value = word_item.get("start", 0.0)
                 try:
-                    raw_percent = int(min(100, max(0, (float(segment.end) / duration_for_progress) * 100)))
-                    if raw_percent > last_reported_percent:
-                        last_reported_percent = raw_percent
-                        progress_callback(raw_percent)
+                    word_start = float(start_value)
+                except (TypeError, ValueError):
+                    word_start = 0.0
+                absolute_sec = timestamp_offset_sec + word_start
+                minute_number = int(absolute_sec // 60)
+                minute_segments.setdefault(minute_number, []).append(token)
+        
+        while True:
+            data = wf.readframes(4000)
+            if len(data) == 0:
+                break
+
+            processed_frames += 4000
+
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                add_result_to_minutes(result)
+
+            # Update progress
+            if progress_callback and total_frames > 0:
+                try:
+                    percent = int(min(100, max(0, (processed_frames * 100) / total_frames)))
+                    if percent > last_reported_percent:
+                        last_reported_percent = percent
+                        progress_callback(percent)
                 except Exception:
                     pass
-            
-            if start_min != current_minute:
-                if minute_text and current_minute >= 0:
-                    minute_segments[current_minute] = minute_text
-                    minute_text = []
-                current_minute = start_min
-            
-            cleaned_text = segment.text.strip()
-            cleaned_text = "".join(c if c.isprintable() or c in "\n\t" else "" for c in cleaned_text)
-            cleaned_text = "".join(c for c in cleaned_text if ord(c) < 0x3000 or ord(c) > 0x9FFF)
-            cleaned_text = " ".join(cleaned_text.split())
-            if cleaned_text:
-                minute_text.append(cleaned_text)
 
-        if minute_text and current_minute >= 0:
-            minute_segments[current_minute] = minute_text
+        # Get final result
+        final_result = json.loads(recognizer.FinalResult())
+        add_result_to_minutes(final_result)
 
-        # Fill gaps left by VAD silence removal
-        total_minutes = int(duration_for_progress // 60) + 1
-        for min_idx in range(total_minutes):
-            start_ts = _format_timestamp((min_idx * 60) + int(timestamp_offset_sec))
-            end_ts = _format_timestamp(((min_idx + 1) * 60) + int(timestamp_offset_sec))
-            
-            if min_idx in minute_segments:
-                content = " ".join(minute_segments[min_idx])
-                lines.append(f"[{start_ts} - {end_ts}] {content}")
-            else:
-                lines.append(f"[{start_ts} - {end_ts}]")
+        wf.close()
 
+        # Get duration
+        duration_sec = float(probe_audio_duration_seconds(audio_for_transcription))
+        
+        # Format output by minute ranges
         txt_filename = audio_path.stem + "_transcription.txt"
         txt_path = output_dir / txt_filename
 
-        full_text = "\n\n".join(lines)
-        txt_path.write_text(full_text, encoding="utf-8")
+        if minute_segments:
+            minute_lines = []
+            for minute_num in sorted(minute_segments.keys()):
+                start_sec = minute_num * 60
+                end_sec = (minute_num + 1) * 60
+                
+                start_ts = format_timestamp(start_sec)
+                end_ts = format_timestamp(end_sec)
+                
+                minute_text = " ".join(minute_segments[minute_num])
+                minute_lines.append(f"[{start_ts}-{end_ts}] {minute_text}")
+            
+            formatted_text = "\n\n".join(minute_lines)
+        else:
+            start_ts = format_timestamp(timestamp_offset_sec)
+            end_ts = format_timestamp(timestamp_offset_sec + duration_sec)
+            formatted_text = f"[{start_ts}-{end_ts}] (no speech detected)"
+        
+        txt_path.write_text(formatted_text, encoding="utf-8")
 
         logger.info(f"Transcription saved: {txt_path}")
 
         result = TranscriptionResult(
             txt_path=txt_path,
-            full_text=full_text,
-            duration_sec=info.duration,
-            line_count=len(lines),
+            full_text=formatted_text,
+            duration_sec=duration_sec,
+            line_count=len(minute_segments) if minute_segments else 1,
         )
 
         if progress_callback:
@@ -277,7 +323,7 @@ def transcribe_audio(
             except Exception:
                 pass
 
-        return True, f"Transcription complete: {len(lines)} segments, {info.duration:.1f}s", result
+        return True, f"Transcription complete: {duration_sec:.1f}s", result
 
     except Exception as e:
         logger.exception(f"Transcription error: {e}")
@@ -303,28 +349,28 @@ def _transcribe_single_audio(
     total_parts: int = 1,
 ) -> Tuple[bool, str, TranscriptionResult | None]:
     """
-    Transcribe a single audio file with an already-loaded Whisper model.
-    
-    This is a helper function designed to run within a ThreadPoolExecutor.
-    
+    Transcribe a single audio file with an already-loaded Vosk model.
+
     Args:
         audio_path: Path to audio file
         timestamp_offset_sec: Timestamp offset for this part
         output_dir: Directory to save transcription TXT
-        model: Already-loaded WhisperModel instance
-        language: Language code
+        model: Already-loaded Vosk Model instance
+        language: Language code (ignored, model already loaded)
         ffmpeg: Path to ffmpeg executable
         progress_callback: Optional callback(part_index, total_parts, percent)
         part_idx: Index of this part (for progress reporting)
         total_parts: Total number of parts (for progress reporting)
-    
+
     Returns:
         Tuple of (success: bool, message: str, result: TranscriptionResult | None)
     """
     try:
+        import vosk
+        
         # Convert to WAV if needed
         if audio_path.suffix.lower() not in [".wav"]:
-            logger.info(f"Converting {audio_path.name} to WAV...")
+            logger.info(f"Converting {audio_path.name} to WAV (part {part_idx}/{total_parts})...")
             success, msg, wav_path = _convert_to_wav(audio_path, ffmpeg)
             if not success:
                 return False, msg, None
@@ -332,81 +378,84 @@ def _transcribe_single_audio(
         else:
             audio_for_transcription = audio_path
 
-        logger.info(f"Transcribing {audio_for_transcription.name} (part {part_idx}/{total_parts})...")
-        segments, info = model.transcribe(
-            str(audio_for_transcription),
-            language=language,
-            beam_size=1,
-            vad_filter=True,
-            word_timestamps=False,
-        )
-
-        lines: List[str] = []
-        minute_segments: Dict[int, List[str]] = {}
-        current_minute = -1
-        minute_text: List[str] = []
-        duration_for_progress = float(info.duration or 0.0)
-        last_reported_percent = -1
-
         if progress_callback:
             try:
                 progress_callback(part_idx, total_parts, 0)
             except Exception:
                 pass
 
-        for segment in segments:
-            start_min = int(segment.start // 60)
+        # Open WAV file
+        wf = wave.open(str(audio_for_transcription), "rb")
+        if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() not in [8000, 16000, 32000, 48000]:
+            wf.close()
+            return False, "Audio must be WAV mono PCM", None
 
-            if progress_callback and duration_for_progress > 0:
+        # Initialize recognizer
+        recognizer = vosk.KaldiRecognizer(model, wf.getframerate())
+        recognizer.SetWords(False)
+
+        logger.info(f"Transcribing {audio_for_transcription.name} (part {part_idx}/{total_parts})...")
+
+        # Process audio in chunks
+        full_text_parts = []
+        total_frames = wf.getnframes()
+        processed_frames = 0
+        last_reported_percent = -1
+
+        while True:
+            data = wf.readframes(4000)
+            if len(data) == 0:
+                break
+
+            processed_frames += 4000
+
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                text = result.get("text", "").strip()
+                if text:
+                    full_text_parts.append(text)
+
+            # Update progress
+            if progress_callback and total_frames > 0:
                 try:
-                    raw_percent = int(min(100, max(0, (float(segment.end) / duration_for_progress) * 100)))
-                    if raw_percent > last_reported_percent:
-                        last_reported_percent = raw_percent
-                        progress_callback(part_idx, total_parts, raw_percent)
+                    percent = int(min(100, max(0, (processed_frames * 100) / total_frames)))
+                    if percent > last_reported_percent:
+                        last_reported_percent = percent
+                        progress_callback(part_idx, total_parts, percent)
                 except Exception:
                     pass
-            
-            if start_min != current_minute:
-                if minute_text and current_minute >= 0:
-                    minute_segments[current_minute] = minute_text
-                    minute_text = []
-                current_minute = start_min
-            
-            cleaned_text = segment.text.strip()
-            cleaned_text = "".join(c if c.isprintable() or c in "\n\t" else "" for c in cleaned_text)
-            cleaned_text = "".join(c for c in cleaned_text if ord(c) < 0x3000 or ord(c) > 0x9FFF)
-            cleaned_text = " ".join(cleaned_text.split())
-            if cleaned_text:
-                minute_text.append(cleaned_text)
 
-        if minute_text and current_minute >= 0:
-            minute_segments[current_minute] = minute_text
+        # Get final result
+        final_result = json.loads(recognizer.FinalResult())
+        final_text = final_result.get("text", "").strip()
+        if final_text:
+            full_text_parts.append(final_text)
 
-        # Fill gaps left by VAD silence removal
-        total_minutes = int(duration_for_progress // 60) + 1
-        for min_idx in range(total_minutes):
-            start_ts = _format_timestamp((min_idx * 60) + int(timestamp_offset_sec))
-            end_ts = _format_timestamp(((min_idx + 1) * 60) + int(timestamp_offset_sec))
-            
-            if min_idx in minute_segments:
-                content = " ".join(minute_segments[min_idx])
-                lines.append(f"[{start_ts} - {end_ts}] {content}")
-            else:
-                lines.append(f"[{start_ts} - {end_ts}]")
+        wf.close()
 
+        # Combine all text
+        full_text = " ".join(full_text_parts)
+
+        # Get duration
+        duration_sec = float(probe_audio_duration_seconds(audio_for_transcription))
+        
+        start_ts = _format_timestamp(timestamp_offset_sec)
+        end_ts = _format_timestamp(timestamp_offset_sec + duration_sec)
+
+        # Save to file
         txt_filename = audio_path.stem + "_transcription.txt"
         txt_path = output_dir / txt_filename
 
-        full_text = "\n\n".join(lines)
-        txt_path.write_text(full_text, encoding="utf-8")
+        formatted_text = f"[{start_ts} - {end_ts}] {full_text}" if full_text else f"[{start_ts} - {end_ts}]"
+        txt_path.write_text(formatted_text, encoding="utf-8")
 
         logger.info(f"Transcription saved: {txt_path}")
 
         result = TranscriptionResult(
             txt_path=txt_path,
-            full_text=full_text,
-            duration_sec=info.duration,
-            line_count=len(lines),
+            full_text=formatted_text,
+            duration_sec=duration_sec,
+            line_count=1,
         )
 
         if progress_callback:
@@ -415,7 +464,7 @@ def _transcribe_single_audio(
             except Exception:
                 pass
 
-        return True, f"Transcription complete: {len(lines)} segments, {info.duration:.1f}s", result
+        return True, f"Transcription complete: {duration_sec:.1f}s", result
 
     except Exception as e:
         logger.exception(f"Transcription error for {audio_path.name} (part {part_idx}/{total_parts}): {e}")
@@ -432,18 +481,17 @@ def transcribe_audio_batch(
     progress_callback: Callable[[int, int, int], None] | None = None,
 ) -> List[Tuple[bool, str, TranscriptionResult | None]]:
     """
-    Transcribe multiple audio files using a single Whisper model instance with parallelism.
+    Transcribe multiple audio files using a single Vosk model instance sequentially.
 
-    Uses ThreadPoolExecutor to transcribe parts in parallel, maintaining chronological order
-    of results based on input order. Progress callback is invoked per-part completion.
+    Processes audio files one by one in order. Progress callback is invoked per-part completion.
 
     Args:
         audio_paths: List of (audio_path, timestamp_offset_sec) tuples
         output_dir: Directory to save transcription TXT files
-        model_size: Whisper model size (tiny, base, small, medium, large)
+        model_size: Ignored (Vosk uses lightweight models)
         language: Language code (es, en, etc.)
-        device: Device to use (cpu, cuda)
-        compute_type: Compute precision (int8, float16, float32)
+        device: Ignored (Vosk runs on CPU)
+        compute_type: Ignored (Vosk runs on CPU)
         progress_callback: Optional callback(part_index, total_parts, percent)
 
     Returns:
@@ -455,74 +503,53 @@ def transcribe_audio_batch(
             return [(False, "ffmpeg not found", None) for _ in audio_paths]
 
         try:
-            from faster_whisper import WhisperModel
+            import vosk
         except ImportError:
-            return [(False, "faster-whisper not installed", None) for _ in audio_paths]
+            return [(False, "vosk not installed", None) for _ in audio_paths]
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load model once (shared across all threads)
-        logger.info(f"Loading Whisper model: {model_size} ({device}/{compute_type}) with cpu_threads={max(1, multiprocessing.cpu_count() - 1)}")
-        model = WhisperModel(
-            model_size,
-            device=device,
-            compute_type=compute_type,
-            cpu_threads=max(1, multiprocessing.cpu_count() - 1),
-        )
+        # Load model once (shared across all transcriptions)
+        logger.info(f"Loading Vosk model: {language}")
+        try:
+            model = vosk.Model(lang=language)
+        except Exception as e:
+            error_msg = f"Model loading failed: {str(e)[:200]}"
+            logger.exception(error_msg)
+            return [(False, error_msg, None) for _ in audio_paths]
 
         total_parts = len(audio_paths)
-        
-        # Initialize results dict to maintain order (will be indexed by part_idx - 1)
-        results: Dict[int, Tuple[bool, str, TranscriptionResult | None]] = {}
-        
-        # Determine optimal number of workers (limit to avoid threadpool saturation on CPU)
-        # On CPU, we typically want fewer workers to avoid contention
-        max_workers = max(1, min(total_parts, max(2, multiprocessing.cpu_count() // 2)))
-        
-        logger.info(f"Starting parallel transcription with {max_workers} workers for {total_parts} part(s)")
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_idx: Dict[concurrent.futures.Future, int] = {}
-            for idx, (audio_path, timestamp_offset_sec) in enumerate(audio_paths, start=1):
-                future = executor.submit(
-                    _transcribe_single_audio,
-                    audio_path=audio_path,
-                    timestamp_offset_sec=timestamp_offset_sec,
-                    output_dir=output_dir,
-                    model=model,
-                    language=language,
-                    ffmpeg=ffmpeg,
-                    progress_callback=progress_callback,
-                    part_idx=idx,
-                    total_parts=total_parts,
-                )
-                future_to_idx[future] = idx
+        results: List[Tuple[bool, str, TranscriptionResult | None]] = []
+
+        logger.info(f"Starting sequential transcription for {total_parts} part(s)")
+
+        # Process each audio file sequentially
+        for idx, (audio_path, timestamp_offset_sec) in enumerate(audio_paths, start=1):
+            logger.info(f"Processing part {idx}/{total_parts}: {audio_path.name}")
             
-            # Collect results as they complete (but store them indexed by original position)
-            completed_count = 0
-            for future in concurrent.futures.as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                try:
-                    result = future.result()
-                    results[idx] = result
-                    completed_count += 1
-                    logger.info(f"Completed transcription for part {idx}/{total_parts} ({completed_count}/{total_parts})")
-                except Exception as e:
-                    logger.exception(f"Exception in parallel transcription for part {idx}: {e}")
-                    results[idx] = (False, f"Transcription failed: {str(e)[:200]}", None)
-        
-        # Reconstruct results in original order
-        ordered_results: List[Tuple[bool, str, TranscriptionResult | None]] = []
-        for idx in range(1, total_parts + 1):
-            if idx in results:
-                ordered_results.append(results[idx])
+            result = _transcribe_single_audio(
+                audio_path=audio_path,
+                timestamp_offset_sec=timestamp_offset_sec,
+                output_dir=output_dir,
+                model=model,
+                language=language,
+                ffmpeg=ffmpeg,
+                progress_callback=progress_callback,
+                part_idx=idx,
+                total_parts=total_parts,
+            )
+            
+            results.append(result)
+            
+            success, message, _ = result
+            if success:
+                logger.info(f"Completed transcription for part {idx}/{total_parts}")
             else:
-                ordered_results.append((False, "Result missing (thread error)", None))
-        
+                logger.error(f"Failed transcription for part {idx}/{total_parts}: {message}")
+
         logger.info(f"Batch transcription complete: {total_parts} part(s)")
-        return ordered_results
+        return results
 
     except Exception as e:
         logger.exception(f"Batch transcription error: {e}")
-        return [(False, f"Model loading failed: {str(e)[:200]}", None) for _ in audio_paths]
+        return [(False, f"Batch processing failed: {str(e)[:200]}", None) for _ in audio_paths]

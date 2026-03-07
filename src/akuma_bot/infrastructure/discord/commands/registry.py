@@ -117,17 +117,22 @@ def _write_transcript_txt(
     filename = safe_filename(f"{display_label}_{timestamp}", 150, "transcript") + ".txt"
     txt_path = output_dir / filename
 
+    # Add line breaks every 30 characters in display_label
+    def add_line_breaks(text: str, width: int = 50) -> str:
+        lines = []
+        for i in range(0, len(text), width):
+            lines.append(text[i:i+width])
+        return "\n".join(lines)
+
+    formatted_label = add_line_breaks(display_label)
+
     sections: list[str] = [
-        "======= AUTOMATIC TRANSCRIPTION REPORT=======\n",
-        f"GENERATED AT (DATETIME):\n",
-        f"{datetime.datetime.now().isoformat()}\n",
+        "========= AUTOMATIC TRANSCRIPTION REPORT =========\n",
         f"GENERATED AT (UTC):\n",
         f"{datetime.datetime.utcnow().isoformat()}\n",
-        f"GENERATED AT (DATETIME): {datetime.datetime.now().isoformat()}\n",
-        f"GENERATED AT (UTC): {datetime.datetime.utcnow().isoformat()}\n",
         f"SOURCE:\n",
-        f"{display_label}\n",
-        "=============================================\n\n",
+        f"{formatted_label}\n",
+        "==================================================\n\n",
     ]
     for display_label, transcript_body in transcription_results:
         body = transcript_body.strip() or "(no content detected)"
@@ -387,9 +392,11 @@ def register_commands(tree: app_commands.CommandTree, deps) -> None:
             ]
 
             def report_batch_progress(part_idx: int, total: int, percent: int):
+                # Calculate overall progress percentage across all parts
                 bounded = max(0, min(100, int(percent)))
-                step = bounded // 10
-                message = f"⏳ Transcription: part {part_idx}/{total} at {step * 10}%\n{get_space_info_short()}"
+                overall_percent = int(((part_idx - 1) * 100 + bounded) / total)
+                overall_percent = max(0, min(100, overall_percent))
+                message = f"🎤 Transcribing... {overall_percent}%\n{get_space_info_short()}"
                 try:
                     future = asyncio.run_coroutine_threadsafe(
                         _safe_message_update(transcribe_msg_state["current_msg"], message, channel),
