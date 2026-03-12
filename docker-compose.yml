@@ -9,4 +9,5 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/data
+      - ./data-prod:/app/data
+      - ./.env:/app/.env:ro

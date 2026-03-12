@@ -1,80 +1,92 @@
 # BotkumaX
 
-Bot de Discord para:
-- reproducir X Spaces en canal de voz;
-- consultar por scraping los participantes del Space actual (host, co-hosts, speakers y listeners);
-- controlar reproducción por slash commands;
-- guardar historial en SQLite;
-- monitorear cuentas de X y enviar alertas automáticas cuando detecta Spaces en vivo.
+Discord bot for:
+- playing X Spaces in a voice channel;
+- scraping participants from the current Space (host, co-hosts, speakers, listeners);
+- controlling playback with slash commands;
+- storing history in SQLite;
+- monitoring X accounts and sending automatic live Space alerts.
 
-## Resumen rápido del proyecto
+## Quick overview
 
-BotkumaX unifica dos flujos en un solo proceso:
-1. **Player de voz**: entra al voice channel y reproduce live/recorded.
-2. **Monitor de alertas**: vigila cuentas de X y publica embeds de alerta en canales de Discord.
+BotkumaX runs two flows in one process:
+1. **Voice player**: joins voice channels and plays live/recorded Spaces.
+2. **Alert monitor**: watches X accounts and posts alert embeds in Discord channels.
 
-Esto evita tener dos bots/procesos separados para audio y alertas.
+This avoids running separate bots/services for audio and alerts.
 
-## Comandos slash
+## Slash commands (current)
 
-### Player y utilidades
+### Playback and utilities
 
-- `/live <url>`: reproduce un Space en vivo en tu canal de voz.
-- `/rec <url>`: reproduce un Space grabado.
-- `/participants`: hace scraping del Space actual y muestra host, co-hosts, speakers y listeners.
-- `/dash`: crea/actualiza el panel interactivo del bot.
-- `/dc`: desconecta el bot del canal de voz.
-- `/mute`: silencia o activa audio del bot.
-- `/resume`: reanuda si está en pausa.
-- `/forward <minutos>`: adelanta 1, 5, 10, 30 o 60 minutos.
-- `/rewind <minutos>`: retrocede 1, 5 o 30 minutos.
-- `/skip`: salta al siguiente item de la cola.
-- `/cq`: limpia la cola de reproducción.
-- `/now`: muestra lo que se está reproduciendo.
-- `/queue`: lista la cola actual.
-- `/mark`: guarda un bookmark de la posición actual.
-- `/bookmarks`: lista bookmarks (`action:list`), elimina uno por `bookmark_id` (`action:delete`) o limpia todos (`action:clear`).
-- `/history`: muestra historial reciente de reproducción.
-- `/historycsv`: exporta historial a CSV.
-- `/diag`: diagnóstico rápido del estado del bot.
-- `/health`: snapshot operativo (latencia, uptime, voz, cola, etc.).
-- `/alert_add <@handle|id>`: agrega una cuenta X a monitoreo.
-- `/alert_remove <indice|id|@handle>`: elimina una cuenta monitoreada.
-- `/alert_list`: lista cuentas monitoreadas.
-- `/alert_map <id> <handle>`: asocia ID de X con @handle.
-- `/alert_interval <segundos>`: cambia intervalo de escaneo.
-- `/alert_status`: muestra estado del monitor de alertas.
-- `/alert_check`: fuerza un escaneo inmediato.
+- `/live <url>`: play a live X Space in your voice channel.
+- `/transcript <url>`: download and transcribe a recorded X Space to MP3 + TXT.
+- `/participants`: scrape and show host, co-hosts, speakers, and listeners for the active Space.
+- `/dash`: create/update the interactive bot control panel.
+- `/dc`: disconnect the bot from voice.
+- `/mute`: toggle bot audio mute.
+- `/resume`: resume playback when paused.
+- `/forward <minutes>`: skip forward by 1, 5, 10, 30, or 60 minutes.
+- `/rewind <minutes>`: rewind by 1, 5, or 30 minutes.
+- `/now`: show currently playing item.
+- `/mark`: save a bookmark at current position.
+- `/bookmarks`: list (`action:list`), delete (`action:delete bookmark_id:<id>`), or clear (`action:clear`) bookmarks.
+- `/health`: full diagnostics (latency, uptime, voice, queue, current session details, etc.).
 
-### Formato de URL soportado
+### Alerts and audit
 
-- Válido: `https://x.com/i/spaces/<id>`
-- Ejemplo: `https://x.com/i/spaces/1RKjpzpmXpLJw`
-- No válido para reproducción: links `.../status/...` u otras rutas de X.
+- `/alert_add <@handle|id>`: add an X account to monitoring and bind the current channel.
+- `/alert_remove <index|id|@handle>`: remove account for current channel; fully remove if no channels remain.
+- `/alert_list`: list monitored accounts in this server.
+- `/alert_interval <seconds>`: set polling interval.
+- `/audit_log`: show audit events (bookmarks, alerts, transcripts, etc.).
 
-## Configuración de entorno
+## Supported URL format
 
-Mínimo requerido:
+- Valid: `https://x.com/i/spaces/<id>`
+- Example: `https://x.com/i/spaces/1RKjpzpmXpLJw`
+- Not valid for playback: links like `.../status/...` or other X routes.
+
+## Environment configuration
+
+Configuration files are auto-created when the bot starts. If a mounted volume path points to a directory with the same file name, the bot will remove that directory and replace it with an empty JSON file.
+
+Example `config.json` (or `config.dev.json`):
+```json
+{
+  "user_ids": ["1542216927296225281", "64032321"],
+  "username_map": {"1542216927296225281": "_ebnd1"},
+  "user_channels": {"1542216927296225281": [123456789012345678]},
+  "check_interval": 600
+}
+```
+
+Example `alertados.json` (or `alertados.dev.json`):
+```json
+["1vKpPrPdoroKE", "1DxLdvdRdEvxm"]
+```
+
+Minimum required:
 - `DISCORD_TOKEN`
 
-Variables principales (opcional):
-- `SYNC_GUILD_ID` sincroniza slash commands instantáneamente en un servidor específico.
-- `HISTORY_DB_PATH` por defecto `data/history.db`.
-- `IDLE_DISCONNECT_SECONDS` por defecto `60`.
-- `DISCORD_ALERT_CHANNEL_IDS` lista de canales para alertas (separados por coma).
-- `DISCORD_ALERT_CHANNEL_ID` fallback de un solo canal.
-- `DISCORD_ADMIN_CHANNEL_ID` canal para avisos de error/parcial de entrega.
-- `DISCORD_ALERT_MENTION_EVERYONE` por defecto `true`.
-- `ALERT_CONFIG_PATH` por defecto `config.json`.
-- `ALERTED_SPACES_PATH` por defecto `alertados.json`.
-- `X_AUTH_TOKEN`, `X_CT0`, `X_TWID` cookies de X/Twitter para scraping autenticado.
-- Variables avanzadas del scraper (`X_PUBLIC_BEARER`, `X_WEB_BASE_URL`, `X_API_BASE_URL`, `X_GQL_*`, `X_HTTP_TIMEOUT_*`) para ajustar endpoints/query IDs sin cambiar código.
+Main optional variables:
+- `SYNC_GUILD_ID`: instant slash sync to a specific guild.
+- `HISTORY_DB_PATH`: default `data/history.db`.
+- `IDLE_DISCONNECT_SECONDS`: default `60`.
+- `DISCORD_ALERT_CHANNEL_IDS`: fallback alert channels (comma-separated).
+- `DISCORD_ALERT_CHANNEL_ID`: single fallback channel.
+- `DISCORD_ADMIN_CHANNEL_ID`: channel for delivery/error notices.
+- `DISCORD_ALERT_MENTION_EVERYONE`: default `true`.
+- `ALERT_CONFIG_PATH`: default `config.json`.
+- `ALERTED_SPACES_PATH`: default `alertados.json`.
+- `X_AUTH_TOKEN`, `X_CT0`, `X_TWID`: X/Twitter cookies for authenticated scraping.
+- Advanced scraper variables (`X_PUBLIC_BEARER`, `X_WEB_BASE_URL`, `X_API_BASE_URL`, `X_GQL_*`, `X_HTTP_TIMEOUT_*`) to tune endpoints/query IDs without code changes.
 
-Referencia completa en:
+Full reference:
 - [`.env.example`](./.env.example)
 - [`.env.dev`](./.env.dev)
 
-## Ejecución local (sin Docker)
+## Local run (without Docker)
 
 ```bash
 python -m venv .venv
@@ -85,15 +97,47 @@ cp .env.example .env
 python -m akuma_bot.main
 ```
 
-## Desarrollo con Docker (aislado de prod)
+## Tests
 
-Este proyecto incluye setup de desarrollo separado para no mezclar estado con producción:
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+python -m coverage run -m unittest discover -s tests -p "test_*.py"
+python -m coverage report -m
+```
+
+## Development notes
+
+- Layered architecture: `domain/`, `application/`, `infrastructure/`.
+- DDD is applied strongly in history/audit (`PlayHistory`, `Bookmark`, `AuditLog`).
+- Patterns: Value Objects, Use Cases, and ports/repositories.
+- Discord command changes: `src/akuma_bot/infrastructure/discord/commands/registry.py`.
+- Storage changes: `src/akuma_bot/infrastructure/persistence/sqlite_history_repository.py`.
+
+## Audit system
+
+- `audit_log` table centralizes administrative events (`bookmark_add`, `alert_add`, `transcript`, etc.).
+- `play_history` and `bookmarks` store `user_name` and `user_tag` for traceability.
+- `/audit_log` supports filtering by event type and limit.
+- All inserts use parameterized queries.
+
+## Project structure
+
+- `src/akuma_bot/domain/`: domain logic (DDD)
+  - `alerts/`: alert entities and rules
+  - `playback/`: playback entities and rules
+- `src/akuma_bot/application/`: use cases and orchestration
+- `src/akuma_bot/infrastructure/`: technical adapters (Discord, DB, scraper)
+- `tests/`: test suite (unittest + pytest)
+
+## Docker: development
+
+This repo includes separate development setup to keep prod and dev state isolated:
 - `docker-compose.dev.yml`
 - `.env.dev`
 - `config.dev.json`
 - `alertados.dev.json`
 
-Comandos:
+Commands:
 
 ```bash
 docker compose -f docker-compose.dev.yml up --build -d
@@ -101,56 +145,27 @@ docker compose -f docker-compose.dev.yml logs -f bot-dev
 docker compose -f docker-compose.dev.yml down
 ```
 
-## Producción con Docker/OCI
+## Docker/OCI: production
 
-1. Preparar servidor (Docker instalado).
-2. Crear carpeta de despliegue (por ejemplo `/opt/akuma-bot`).
-3. Colocar `docker-compose.yml` + `.env` de producción.
-4. Si la imagen es privada en GHCR, autenticar con PAT (`read:packages`).
-5. Levantar:
+1. Prepare server (Docker installed).
+2. Create deployment folder (for example `/opt/akuma-bot`).
+3. Place `docker-compose.yml` + production `.env`.
+4. If GHCR image is private, authenticate with PAT (`read:packages`).
+5. Start:
 
 ```bash
-docker compose down --remove-orphans
-docker compose up -d --build
-docker compose logs -f bot
+docker compose -f docker-compose.yml down --remove-orphans
+docker compose -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml logs -f bot
 ```
 
-## Nota sobre sync de comandos
+> Note: `--force-recreate` recreates containers but does **not** rebuild images. Use `--build` when code changes.
 
-Si defines `SYNC_GUILD_ID`, los slash commands se reflejan casi al instante en ese servidor.
-Si no lo defines, el sync es global (puede tardar más).
+## Slash sync note
 
-## Nota de versión
+If `SYNC_GUILD_ID` is set, slash commands update almost instantly in that guild.
+If not set, sync is global and can take longer.
 
-### v0.0.3 (Marzo 2026)
+## Changelog
 
-- Validación estricta de URL para reproducción:
-  - solo se acepta formato `https://x.com/i/spaces/<id>`.
-- Comportamiento de voz actualizado:
-  - el bot entra ensordecido al voice channel (escucha desactivada).
-- Auto-salida por inactividad:
-  - si pasan 5 minutos con solo el bot en VC, se desconecta y cierra sesión con aviso.
-- Cierre automático al terminar Space:
-  - si el Space termina, el bot sale del VC y publica un resumen (título, host, participantes, listeners, duración y URL).
-  
-### v0.2.0 (Marzo 2026)
-
-- Nuevo comando `/participants`:
-  - consulta participantes del Space actual por scraping;
-  - muestra host, co-hosts, speakers y listeners;
-  - ahora los `@usuarios` salen con link directo a su perfil en X.
-- Mejoras en bookmarks:
-  - `/mark` ahora acepta título opcional (`title`);
-  - calcula `Position` como diferencia real entre inicio UTC del Space y momento del bookmark;
-  - muestra `Space started (UTC)` y `Bookmarked (UTC)`.
-- `/bookmarks` extendido con acciones:
-  - `action:list` para listar;
-  - `action:delete bookmark_id:<id>` para borrar uno;
-  - `action:clear` para limpiar todos.
-- Simplificación de controles:
-  - se eliminaron comandos `/pause`, `/seek`, `/seekback`, `/seekto`;
-  - se quitaron botones del panel: `Pause`, `-1m`, `-5m`, `+5m`, `+30m`, `+1h`, `Seek`, `Clear chat`.
-- Enfoque solo X Spaces:
-  - se retiró soporte de reproducción YouTube.
-- Configuración del scraper movida a entorno:
-  - query IDs, bearer, endpoints y timeouts ahora se controlan vía `.env`.
+See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.

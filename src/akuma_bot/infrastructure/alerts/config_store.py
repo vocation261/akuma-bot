@@ -1,132 +1,135 @@
-from __future__ import annotations
-
 import json
-import os
-from dataclasses import dataclass
+import logging
 from pathlib import Path
+from typing import Dict, List, Union
+
+log = logging.getLogger(__name__)
+
+# The default structure for the main alert configuration file.
+# This will be used if the file is missing or corrupted.
+DEFAULT_ALERT_CONFIG = {
+    "user_ids": [],
+    "check_interval": 600,
+    "username_map": {},
+    "user_channels": {}
+}
+
+# The default structure for the file that tracks spaces already alerted.
+DEFAULT_ALERTED_SPACES = []
 
 
-def _root_dir() -> Path:
-    return Path(__file__).resolve().parents[4]
+class JsonStore:
+    """
+    A robust class for handling loading and saving of JSON data to a file.
+    It handles file creation, directory creation, and corruption gracefully.
+    """
+
+    def __init__(self, path: Union[str, Path], default_data: Union[Dict, List]):
+        self.path = Path(path)
+        self.default_data = default_data
+
+    def load(self) -> Union[Dict, List]:
+        """
+        Loads data from the JSON file.
+        - If the file doesn't exist, it creates it with default data.
+        - If the file is corrupt or empty, it logs an error and returns default data.
+        """
+        if not self.path.exists():
+            log.warning(f"File not found: {self.path}. Creating it with default structure.")
+            self.save(self.default_data)
+            return self.default_data
+
+        if self.path.is_dir():
+            log.warning(f"Path {self.path} is a directory, removing it and creating file with default data.")
+            import shutil
+            shutil.rmtree(self.path)
+            self.save(self.default_data)
+            return self.default_data
+
+        try:
+            with self.path.open("r", encoding="utf-8") as f:
+                content = f.read()
+                if not content:
+                    log.warning(f"File is empty: {self.path}. Using default data.")
+                    return self.default_data
+                return json.loads(content)
+        except (json.JSONDecodeError, IOError) as e:
+            log.error(f"Failed to load or parse {self.path}: {e}. Using default data as a fallback.")
+            return self.default_data
+
+    def save(self, data: Union[Dict, List]) -> None:
+        """Saves data to the JSON file, creating parent directories if necessary.
+
+        If the target path happens to be a directory, it will be removed before
+        writing the new file in order to avoid IsADirectoryError.
+        """
+        try:
+            if self.path.is_dir():
+                log.warning(f"Path {self.path} is a directory, removing before saving.")
+                import shutil
+
+                shutil.rmtree(self.path)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except IOError as e:
+            log.error(f"Could not write to file {self.path}: {e}")
 
 
-def sanitize_alert_config(raw: dict | None) -> dict:
-    payload = raw if isinstance(raw, dict) else {}
-
-    user_ids_raw = payload.get("user_ids", [])
-    if not isinstance(user_ids_raw, list):
-        user_ids_raw = []
-    user_ids: list[str] = []
-    for value in user_ids_raw:
-        item = str(value).strip()
-        if item.isdigit() and item not in user_ids:
-            user_ids.append(item)
-
-    username_map_raw = payload.get("username_map", {})
-    username_map: dict[str, str] = {}
-    if isinstance(username_map_raw, dict):
-        for uid, username in username_map_raw.items():
-            uid_str = str(uid).strip()
-            if not uid_str.isdigit():
-                continue
-            if not isinstance(username, str):
-                continue
-            cleaned = username.strip().lstrip("@")
-            if cleaned:
-                username_map[uid_str] = cleaned
-
-    try:
-        interval = int(payload.get("check_interval", 600))
-    except Exception:
-        interval = 600
-    if interval < 10:
-        interval = 10
-
-    try:
-        retry_attempts = int(payload.get("retry_attempts", 3))
-    except Exception:
-        retry_attempts = 3
-    retry_attempts = max(1, min(6, retry_attempts))
-
-    try:
-        retry_backoff_seconds = float(payload.get("retry_backoff_seconds", 1.0))
-    except Exception:
-        retry_backoff_seconds = 1.0
-    retry_backoff_seconds = max(0.0, min(10.0, retry_backoff_seconds))
-
-    return {
-        "user_ids": user_ids,
-        "check_interval": interval,
-        "username_map": username_map,
-        "retry_attempts": retry_attempts,
-        "retry_backoff_seconds": retry_backoff_seconds,
-    }
-
-
-@dataclass(slots=True)
 class AlertConfigRepository:
-    path: Path | None = None
+    def __init__(self):
+        import os
+        # determine if we are in development mode (ENV=dev or token contains dev)
+        is_dev = os.getenv("ENV", "").lower() == "dev" or "dev" in os.getenv("DISCORD_TOKEN", "").lower()
+        # allow overriding default locations via env vars
+        env_path = os.getenv("ALERT_CONFIG_PATH")
+        if env_path:
+            path = env_path
+        else:
+            path = "/app/config.dev.json" if is_dev else "/app/config.json"
+        self.store = JsonStore(path, DEFAULT_ALERT_CONFIG)
+        # eager load so that missing files are created and directories replaced
+        self.store.load()
 
-    def __post_init__(self) -> None:
-        if self.path is None:
-            raw_path = os.environ.get("ALERT_CONFIG_PATH", "").strip()
-            self.path = Path(raw_path) if raw_path else (_root_dir() / "config.json")
-
-    def load(self) -> dict:
-        if not self.path.exists():
-            data = sanitize_alert_config(None)
-            self.save(data)
-            return data
+    def load(self):
+        data = self.store.load()
         try:
-            with self.path.open("r", encoding="utf-8") as handle:
-                return sanitize_alert_config(json.load(handle))
+            return sanitize_alert_config(data)
         except Exception:
-            return sanitize_alert_config(None)
+            # in case the underlying file is malformed, fall back to defaults
+            return DEFAULT_ALERT_CONFIG
 
-    def save(self, config: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("w", encoding="utf-8") as handle:
-            json.dump(sanitize_alert_config(config), handle, indent=4, ensure_ascii=False)
+    def save(self, data):
+        self.store.save(data)
 
 
-@dataclass(slots=True)
 class AlertedSpaceRepository:
-    path: Path | None = None
-    _cache: set[str] | None = None
+    def __init__(self):
+        import os
+        is_dev = os.getenv("ENV", "").lower() == "dev" or "dev" in os.getenv("DISCORD_TOKEN", "").lower()
+        env_path = os.getenv("ALERTED_SPACES_PATH")
+        if env_path:
+            path = env_path
+        else:
+            path = "/app/alertados.dev.json" if is_dev else "/app/alertados.json"
+        self.store = JsonStore(path, DEFAULT_ALERTED_SPACES)
+        # ensure file exists and is not accidentally a directory
+        self.store.load()
 
-    def __post_init__(self) -> None:
-        if self.path is None:
-            raw_path = os.environ.get("ALERTED_SPACES_PATH", "").strip()
-            self.path = Path(raw_path) if raw_path else (_root_dir() / "alertados.json")
+    def load(self):
+        return self.store.load()
 
-    def load(self) -> set[str]:
-        if self._cache is not None:
-            return set(self._cache)
-        if not self.path.exists():
-            self._cache = set()
-            return set()
-        try:
-            with self.path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-            self._cache = {str(item).strip() for item in data if str(item).strip()}
-        except Exception:
-            self._cache = set()
-        return set(self._cache)
+    def save(self, data):
+        self.store.save(data)
 
-    def contains(self, key: str) -> bool:
-        if self._cache is None:
-            self.load()
-        return key in (self._cache or set())
 
-    def add(self, key: str) -> None:
-        if self._cache is None:
-            self.load()
-        self._cache = self._cache or set()
-        self._cache.add(str(key))
-        self.save(self._cache)
-
-    def save(self, alerted: set[str]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._cache = {str(item).strip() for item in alerted if str(item).strip()}
-        with self.path.open("w", encoding="utf-8") as handle:
-            json.dump(sorted(self._cache), handle, indent=4, ensure_ascii=False)
+def sanitize_alert_config(config: dict) -> dict:
+    """Sanitize and ensure the config has all required keys."""
+    sanitized = DEFAULT_ALERT_CONFIG.copy()
+    sanitized.update(config)
+    # Ensure lists and dicts are properly typed
+    sanitized["user_ids"] = list(sanitized.get("user_ids", []))
+    sanitized["username_map"] = dict(sanitized.get("username_map", {}))
+    sanitized["user_channels"] = dict(sanitized.get("user_channels", {}))
+    sanitized["check_interval"] = int(sanitized.get("check_interval", 600) or 600)
+    return sanitized

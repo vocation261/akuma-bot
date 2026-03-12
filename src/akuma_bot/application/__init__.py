@@ -1,3 +1,3 @@
 """Application layer package."""
 
-__all__ = ["ports", "use_cases"]
+__all__ = ["ports", "use_cases", "alerts", "playback"]

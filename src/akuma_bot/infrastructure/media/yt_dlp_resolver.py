@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import shlex
 import subprocess
 import time
 
 from akuma_bot.infrastructure.media.space_scraper import scrape_space_html
+from akuma_bot.infrastructure.runtime.text_utils import is_x_space_url
 
 logger = logging.getLogger("akuma_bot")
 
@@ -64,14 +64,7 @@ class YtDlpResolver:
         return ""
 
     def is_space_url(self, url: str) -> bool:
-        text = str(url or "").strip()
-        return bool(
-            re.fullmatch(
-                r"https://(?:www\.)?x\.com/i/spaces/[A-Za-z0-9]+(?:[/?#].*)?",
-                text,
-                re.IGNORECASE,
-            )
-        )
+        return is_x_space_url(url)
 
     def resolve_live_status(self, info: dict, source_is_space: bool) -> tuple[bool, str]:
         live_flag = info.get("live")

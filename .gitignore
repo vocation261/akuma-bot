@@ -1,8 +1,7 @@
 .env
 .env.dev
 config.json
-config.dev.json
-alertados.dev.json
+*.dev.json
 data/
 data/history.dev.db
 *.db
