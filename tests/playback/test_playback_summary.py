@@ -1,6 +1,6 @@
 import unittest
 
-from akuma_bot.infrastructure.discord.playback.playback_summary_service import build_end_notice, session_details_snapshot
+from infrastructure.discord.playback.playback_summary_service import build_end_notice, session_details_snapshot
 
 
 class FakeSession:

@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import Mock
 
-from akuma_bot.application.alerts.use_cases.manage_alert_accounts import (
+from application.alerts.use_cases.manage_alert_accounts import (
     add_account_to_channel,
     map_username,
     remove_account_from_channel,

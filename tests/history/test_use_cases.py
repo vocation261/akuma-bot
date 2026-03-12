@@ -3,12 +3,12 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from akuma_bot.application.history import (
+from application.history import (
     AddBookmarkUseCase,
     LogPlaybackUseCase,
     QueryPlayHistoryUseCase,
 )
-from akuma_bot.domain.history import (
+from domain.history import (
     Bookmark,
     BookmarkId,
     ChannelId,

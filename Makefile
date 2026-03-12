@@ -5,7 +5,7 @@ install:
 .PHONY: install run compile test coverage prod-rebuild
 
 run:
-	python -m akuma_bot.main
+	python -m main
 
 compile:
 	python -m compileall src

@@ -1,6 +1,6 @@
 import unittest
 
-from akuma_bot.infrastructure.alerts.services.space_query_service import XSpacesScraper
+from infrastructure.alerts.services.space_query_service import XSpacesScraper
 
 
 class SpaceQueryNamingTests(unittest.TestCase):

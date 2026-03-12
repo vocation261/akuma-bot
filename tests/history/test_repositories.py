@@ -5,7 +5,7 @@ import tempfile
 import os
 from pathlib import Path
 
-from akuma_bot.domain.history import (
+from domain.history import (
     Bookmark,
     ChannelId,
     EventType,
@@ -18,7 +18,7 @@ from akuma_bot.domain.history import (
     UserId,
     UserInfo,
 )
-from akuma_bot.infrastructure.persistence.history_sqlite_repository import (
+from infrastructure.persistence.history_sqlite_repository import (
     SqliteAuditLogRepository,
     SqliteBookmarkRepository,
     SqliteHistoryDb,
@@ -224,7 +224,7 @@ class TestSqliteAuditLogRepository:
     async def test_save_and_retrieve(self, db) -> None:
         """Repository should save and retrieve audit entries."""
         # Arrange
-        from akuma_bot.domain.history import AuditLog
+        from domain.history import AuditLog
 
         repo = SqliteAuditLogRepository(db)
         user_info = UserInfo(user_id=UserId(123), name="alice", tag="@alice")
@@ -257,7 +257,7 @@ class TestSqliteAuditLogRepository:
     async def test_retrieve_by_event_type(self, db) -> None:
         """Repository should retrieve entries by event type."""
         # Arrange
-        from akuma_bot.domain.history import AuditLog
+        from domain.history import AuditLog
 
         repo = SqliteAuditLogRepository(db)
         user_info = UserInfo(user_id=UserId(123), name="alice", tag="@alice")

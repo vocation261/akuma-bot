@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock
 
-from akuma_bot.application.alerts.use_cases.poll_spaces import compute_delivery_key, resolve_target_channels
+from application.alerts.use_cases.poll_spaces import compute_delivery_key, resolve_target_channels
 
 
 class PollAlertUseCaseTests(unittest.TestCase):

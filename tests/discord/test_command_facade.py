@@ -1,6 +1,6 @@
 import unittest
 
-from akuma_bot.infrastructure.discord.command_handlers import register_commands, register_tree_error_handler
+from infrastructure.discord.command_handlers import register_commands, register_tree_error_handler
 
 
 class CommandFacadeTests(unittest.TestCase):

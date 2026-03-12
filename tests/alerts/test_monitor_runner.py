@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from akuma_bot.infrastructure.alerts.services.monitor_runner import (
+from infrastructure.alerts.services.monitor_runner import (
     SpaceAlertMonitor,
     build_space_alert_embed,
 )

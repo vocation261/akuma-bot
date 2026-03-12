@@ -20,9 +20,9 @@ This avoids running separate bots/services for audio and alerts.
 ### Playback and utilities
 
 - `/live <url>`: play a live X Space in your voice channel.
-- `/transcript <url>`: download and transcribe a recorded X Space to MP3 + TXT.
+- `/transcript <url>`: download and transcribe a recorded X Space to MP3 + TXT. Live or still-running Spaces are rejected.
 - `/participants`: scrape and show host, co-hosts, speakers, and listeners for the active Space.
-- `/dash`: create/update the interactive bot control panel.
+- `/dash`: render or refresh the interactive bot control panel in the command message so it stays visible in-channel.
 - `/dc`: disconnect the bot from voice.
 - `/mute`: toggle bot audio mute.
 - `/resume`: resume playback when paused.
@@ -94,7 +94,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 cp .env.example .env
-python -m akuma_bot.main
+python -m main
 ```
 
 ## Tests
@@ -110,8 +110,8 @@ python -m coverage report -m
 - Layered architecture: `domain/`, `application/`, `infrastructure/`.
 - DDD is applied strongly in history/audit (`PlayHistory`, `Bookmark`, `AuditLog`).
 - Patterns: Value Objects, Use Cases, and ports/repositories.
-- Discord command changes: `src/akuma_bot/infrastructure/discord/commands/registry.py`.
-- Storage changes: `src/akuma_bot/infrastructure/persistence/sqlite_history_repository.py`.
+- Discord command changes: `src/infrastructure/discord/commands/registry.py`.
+- Storage changes: `src/infrastructure/persistence/sqlite_history_repository.py`.
 
 ## Audit system
 
@@ -122,11 +122,11 @@ python -m coverage report -m
 
 ## Project structure
 
-- `src/akuma_bot/domain/`: domain logic (DDD)
+- `src/domain/`: domain logic (DDD)
   - `alerts/`: alert entities and rules
   - `playback/`: playback entities and rules
-- `src/akuma_bot/application/`: use cases and orchestration
-- `src/akuma_bot/infrastructure/`: technical adapters (Discord, DB, scraper)
+- `src/application/`: use cases and orchestration
+- `src/infrastructure/`: technical adapters (Discord, DB, scraper)
 - `tests/`: test suite (unittest + pytest)
 
 ## Docker: development

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from akuma_bot.infrastructure.alerts.config_store import (
+from infrastructure.alerts.config_store import (
     JsonStore,
     DEFAULT_ALERT_CONFIG,
     DEFAULT_ALERTED_SPACES,

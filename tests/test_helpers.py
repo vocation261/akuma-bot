@@ -1,7 +1,7 @@
 import unittest
 
-from akuma_bot.infrastructure.media.yt_dlp_resolver import YtDlpResolver
-from akuma_bot.infrastructure.runtime.text_utils import extract_space_id, format_elapsed, validate_playable_url
+from infrastructure.media.yt_dlp_resolver import YtDlpResolver
+from infrastructure.runtime.text_utils import extract_space_id, format_elapsed, validate_playable_url
 
 
 class HelpersTestCase(unittest.TestCase):

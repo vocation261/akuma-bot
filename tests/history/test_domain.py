@@ -3,7 +3,7 @@
 import pytest
 import time
 
-from akuma_bot.domain.history import (
+from domain.history import (
     AuditLog,
     Bookmark,
     ChannelId,
