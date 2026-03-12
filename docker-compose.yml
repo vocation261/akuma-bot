@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/vocation261/akuma-bot:latest
-    container_name: akuma-bot
+    image: prod-akuma-bot
+    container_name: prod-akuma-bot
     restart: unless-stopped
     env_file:
       - .env
