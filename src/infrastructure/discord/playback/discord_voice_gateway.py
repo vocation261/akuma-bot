@@ -88,7 +88,7 @@ class DiscordVoiceGateway:
 
             before_options = "-loglevel error"
             if stream_url.startswith(("http://", "https://")):
-                before_options = "-loglevel error -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+                before_options = "-loglevel error -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -rw_timeout 5000000 -probesize 32M -analyzeduration 5000000 -fflags +discardcorrupt"
 
             raw_source = discord.FFmpegPCMAudio(
                 stream_url,
@@ -365,7 +365,7 @@ class DiscordVoiceGateway:
 
         before_options = f"-loglevel error -ss {target}"
         if str(stream_url).startswith(("http://", "https://")):
-            before_options = f"-loglevel error -ss {target} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+            before_options = f"-loglevel error -ss {target} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -rw_timeout 5000000 -probesize 32M -analyzeduration 5000000 -fflags +discardcorrupt"
 
         raw_source = discord.FFmpegPCMAudio(
             stream_url,

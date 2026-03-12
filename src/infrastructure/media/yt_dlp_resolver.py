@@ -48,10 +48,20 @@ class YtDlpResolver:
             try:
                 for fmt in format_candidates:
                     result = subprocess.run(
-                        ["yt-dlp", "-g", "-f", fmt, "--no-warnings", "--quiet", *extra, url],
+                        [
+                            "yt-dlp",
+                            "-g",
+                            "-f", fmt,
+                            "--no-warnings",
+                            "--quiet",
+                            "--socket-timeout", "10",
+                            "--http-chunk-size", "10485760",
+                            *extra,
+                            url
+                        ],
                         capture_output=True,
                         text=True,
-                        timeout=35,
+                        timeout=40,
                     )
                     if result.returncode == 0:
                         lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
